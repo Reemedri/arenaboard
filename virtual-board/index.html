@@ -3,36 +3,129 @@
 <head>
   <meta charset="UTF-8">
   <title>ArenaBoard Virtual</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      background: #060606;
+      background:
+        radial-gradient(ellipse at top, #2a2520 0%, #15110d 50%, #0a0806 100%);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       min-height: 100vh;
-      font-family: monospace;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      padding: 40px 20px;
+      position: relative;
     }
-    .outer {
-      background: #0a0a0a;
-      border: 2px solid #1a1a1a;
-      border-radius: 16px;
-      padding: 20px 24px;
+    /* subtle wall texture */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        radial-gradient(circle at 20% 30%, rgba(255,255,255,0.015) 0%, transparent 50%),
+        radial-gradient(circle at 80% 70%, rgba(255,100,50,0.02) 0%, transparent 40%);
+      pointer-events: none;
+      z-index: 0;
     }
-    canvas { display: block; image-rendering: pixelated; }
-    .status { color: #2a2a2a; font-size: 11px; margin-top: 8px; text-align: center; letter-spacing:.06em; }
+    /* wood shelf under the board */
+    body::after {
+      content: '';
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 120px;
+      background: linear-gradient(180deg, transparent 0%, #1a1410 30%, #0e0a07 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .wall-label {
+      position: relative; z-index: 2;
+      font-size: 10px; color: #3a332c; letter-spacing: 0.3em;
+      margin-bottom: 24px; text-transform: uppercase;
+    }
+    /* Frame — matte black bezel like real IoT display */
+    .frame {
+      position: relative; z-index: 2;
+      background: linear-gradient(135deg, #0d0d0f 0%, #141418 100%);
+      border: 1px solid #2a2a32;
+      border-radius: 10px;
+      padding: 24px 26px 22px;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.04),
+        inset 0 -1px 0 rgba(0,0,0,0.6),
+        0 30px 60px rgba(0,0,0,0.8),
+        0 60px 120px rgba(255,80,30,0.08);
+    }
+    /* Bezel brand label */
+    .frame::before {
+      content: 'ARENABOARD';
+      position: absolute;
+      bottom: 6px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 7px;
+      letter-spacing: 0.35em;
+      color: #2a2a32;
+      font-weight: 700;
+    }
+    /* Power LED on bezel */
+    .frame::after {
+      content: '';
+      position: absolute;
+      top: 10px; right: 14px;
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background: #ff2a1a;
+      box-shadow: 0 0 6px #ff2a1a;
+      animation: led-pulse 2s infinite;
+    }
+    @keyframes led-pulse {
+      0%,100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    canvas { display: block; image-rendering: pixelated; border-radius: 3px; }
+    .status-row {
+      position: relative; z-index: 2;
+      margin-top: 20px;
+      display: flex; gap: 20px; align-items: center;
+      font-size: 10px; letter-spacing: 0.15em;
+    }
+    .status { color: #3a332c; }
     .status.connected { color: #1D9E75; }
     .status.error { color: #E24B4A; }
-    .log { margin-top: 4px; font-size: 10px; color: #222; max-height: 40px; overflow-y: auto; width: 768px; }
-    .log div { color: #2a2a2a; padding: 1px 0; }
+    .status.connected::before { content: '● '; }
+    .status.error::before { content: '○ '; }
+    .dot-sep { color: #2a2520; }
+    .log {
+      position: relative; z-index: 2;
+      margin-top: 6px; font-size: 9px; color: #2a2520;
+      max-height: 40px; overflow-y: auto; width: 100%;
+      max-width: 768px; text-align: center;
+    }
+    .log div { padding: 1px 0; }
+    /* Screen glow — soft backlight effect */
+    .frame {
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.04),
+        inset 0 -1px 0 rgba(0,0,0,0.6),
+        0 30px 60px rgba(0,0,0,0.8),
+        0 0 80px rgba(255,80,30,0.05);
+    }
   </style>
 </head>
 <body>
-<div class="outer">
+<div class="wall-label">Living Room · Mounted Display</div>
+<div class="frame">
   <canvas id="board" width="768" height="384"></canvas>
 </div>
-<div class="status" id="status">Connecting...</div>
+<div class="status-row">
+  <span class="status" id="status">Connecting...</span>
+  <span class="dot-sep">·</span>
+  <span class="status" style="color:#3a332c">UID: demo-device-001</span>
+  <span class="dot-sep">·</span>
+  <span class="status" style="color:#3a332c">P2.5 · 128×64</span>
+</div>
 <div class="log" id="log"></div>
 
 <script src="config.js"></script>
@@ -48,8 +141,21 @@ const CX0=41,  CX1=86   // center    41-86
 const DR=87              // divider right
 const HX0=88,  HX1=127  // home box  88-127
 
-let state={home_team:'WAS',away_team:'LAL',home_score:0,away_score:0,period:1,clock:'12:00',status:'WAITING'}
+let state={home_team:'WAS',away_team:'LAL',home_score:0,away_score:0,period:1,clock:'12:00',status:'WAITING',shot_clock:24}
 let homeColor='#E31837', awayColor='#FDB927'
+
+// ─── Device config (synced from server via CONFIG_UPDATE) ───
+let config={
+  brightness: 80,            // 0-100 → multiplies pixel output
+  animation_pack: 'confetti',// 'confetti' | 'fireworks' | 'flash' | 'minimal'
+  favorite_team: 'LAL',
+  favorite_player: null,
+  accent_color: '#FDB927',
+  show_shot_clock: true,
+  show_ticker: true,
+  clock_color: '#ff5500',
+}
+
 let pulseFrame=0, ambientFrame=0
 let shakeX=0, shakeY=0, shakeFrames=0
 let flashActive=false, flashFrame=0
@@ -261,56 +367,61 @@ function drawUI(){
   clearLayer(1)
   const isFinal=state.status==='STATUS_FINAL'
 
-  // ── top labels ──
+  // ── top labels (row 1) ──
   sTxtC(1,'AWAY',1,'#ffffff',AX0,AX1+1)
   sTxtC(1,'HOME',1,'#ffffff',HX0,HX1+1)
 
   // ── dividers ──
-  vLine(1,DL,0,ROWS-10,'#222222')
-  vLine(1,DR,0,ROWS-10,'#222222')
+  vLine(1,DL,0,ROWS-8,'#222222')
+  vLine(1,DR,0,ROWS-8,'#222222')
 
-  // ── boxes ──
-  drawBox(1,AX0,7,AX1-AX0+1,30,'#222222')
-  drawBox(1,CX0,7,CX1-CX0+1,30,'#222222')
-  drawBox(1,HX0,7,HX1-HX0+1,30,'#222222')
+  // ── side boxes — taller to fit logo + score stacked ──
+  drawBox(1,AX0,7,AX1-AX0+1,40,'#222222')
+  drawBox(1,CX0,7,CX1-CX0+1,40,'#222222')
+  drawBox(1,HX0,7,HX1-HX0+1,40,'#222222')
 
-  // ── logos ──
-  const logoY=9
+  // ── logos — Y pushed down 2px (was 9 → 11) for buffer from AWAY/HOME ──
+  const logoY=11
   drawLogo(state.away_team, AX0+10, logoY)
   drawLogo(state.home_team, HX0+10, logoY)
 
-  // ── away score ──
-  lTxtC(1,String(state.away_score),15,'#ffffff',AX0+1,AX1)
+  // ── scores — shifted toward center edge + pushed down 2px (was 15 → 34) ──
+  // placed BELOW the logo instead of overlapping it
+  lTxtC(1,String(state.away_score),34,'#ffffff',AX0+1,AX1)
+  lTxtC(1,String(state.home_score),34,'#ffffff',HX0+1,HX1)
 
-  // ── home score ──
-  lTxtC(1,String(state.home_score),15,'#ffffff',HX0+1,HX1)
+  // ── clock — medium font (unchanged Y) — color from config ──
+  mTxtC(1,state.clock,11,config.clock_color,CX0+1,CX1)
 
-  // ── clock — medium font ──
-  mTxtC(1,state.clock,14,'#ff5500',CX0+1,CX1)
+  // ── QTR label — bright yellow for contrast (was #333333) ──
+  sTxtC(1,'QTR',21,'#FFD400',CX0+1,CX1)
 
-  // ── QTR ──
-  sTxtC(1,'QTR',24,'#333333',CX0+1,CX1)
+  // ── period number — bold, bright, centered ──
+  const pStr=isFinal?'FNL':String(state.period)
+  const pCol=isFinal?'#ff4444':'#FFD400'
+  mTxtC(1,pStr,27,pCol,CX0+1,CX1)
 
-  // ── period ──
-  const pStr=isFinal?'FNL':state.period+'Q'
-  sTxtC(1,pStr,30,isFinal?'#ff4444':'#44dd66',CX0+1,CX1)
+  // ── shot clock — green, 1px gap below period — toggleable via config ──
+  if(config.show_shot_clock){
+    const shotStr=state.shot_clock!=null?String(state.shot_clock).padStart(2,'0'):'24'
+    mTxtC(1,shotStr,37,'#44dd66',CX0+1,CX1)
+  }
 
-  // ── separator ──
-  hLine(1,38,'#1e1e1e')
+  // ── separator above team names ──
+  hLine(1,47,'#1a1a1a')
 
-  // ── team names ──
-  sTxtC(1,state.away_team.substring(0,3),40,awayColor,AX0,AX1+1)
-  sTxtC(1,state.home_team.substring(0,3),40,homeColor,HX0,HX1+1)
+  // ── team abbreviations — pushed down to row 50 (was 40), closer to ticker ──
+  sTxtC(1,state.away_team.substring(0,3),50,awayColor,AX0,AX1+1)
+  sTxtC(1,state.home_team.substring(0,3),50,homeColor,HX0,HX1+1)
 
-  // ── stats row ──
-  sTxtC(1,'PPG APG RPG',40,'#333333',CX0,CX1+1)
+  // ── center mini-divider (replaces unreadable PPG APG RPG) ──
+  px(1,CX0+Math.floor((CX1-CX0)/2)-4,51,'#222')
+  px(1,CX0+Math.floor((CX1-CX0)/2),51,'#222')
+  px(1,CX0+Math.floor((CX1-CX0)/2)+4,51,'#222')
 
-  // ── separator ──
-  hLine(1,48,'#1a1a1a')
-
-  // ── ticker row 50 ──
-  if(scrollText){
-    sTxt(1,scrollText,Math.floor(scrollX),50,'#ffffff')
+  // ── ticker — pushed to row 57 — toggleable via config ──
+  if(scrollText && config.show_ticker){
+    sTxt(1,scrollText,Math.floor(scrollX),57,'#ffffff')
   }
 }
 
@@ -358,7 +469,7 @@ function applyFlash(){
   const val=Math.floor(alpha*200)
   const h=val.toString(16).padStart(2,'0')
   const col=`#${h}${h}${h}`
-  for(let r=0;r<38;r++)for(let c=0;c<COLS;c++)if(layers[1][r][c])layers[3][r][c]=col
+  for(let r=0;r<47;r++)for(let c=0;c<COLS;c++)if(layers[1][r][c])layers[3][r][c]=col
 }
 
 function render(buf){
@@ -366,6 +477,7 @@ function render(buf){
   ctx.fillRect(0,0,canvas.width,canvas.height)
   const sx=shakeFrames>0?shakeX:0
   const sy=shakeFrames>0?shakeY:0
+  const bMul=Math.max(0.1,config.brightness/100)  // brightness 0-100 → 0.1-1.0 multiplier
   for(let r=0;r<ROWS;r++){
     for(let c=0;c<COLS;c++){
       const col=buf[r][c]
@@ -373,11 +485,13 @@ function render(buf){
       const cy=r*PH+PH/2+sy
       if(col){
         const rgb=hexRgb(col)
-        if((rgb.r+rgb.g+rgb.b)/3>60){
-          ctx.fillStyle=`rgba(${rgb.r},${rgb.g},${rgb.b},0.1)`
+        const rr=Math.floor(rgb.r*bMul), gg=Math.floor(rgb.g*bMul), bb=Math.floor(rgb.b*bMul)
+        if((rr+gg+bb)/3>60){
+          ctx.fillStyle=`rgba(${rr},${gg},${bb},0.1)`
           ctx.beginPath();ctx.arc(cx,cy,PW*0.85,0,Math.PI*2);ctx.fill()
         }
-        ctx.fillStyle=gc(col)
+        // gamma-correct the dimmed color
+        ctx.fillStyle=`rgb(${GAMMA[rr]},${GAMMA[gg]},${GAMMA[bb]})`
         ctx.beginPath();ctx.arc(cx,cy,PW*0.42,0,Math.PI*2);ctx.fill()
       } else {
         ctx.fillStyle='#0c0c0c'
@@ -402,11 +516,45 @@ setInterval(()=>{
 },50)
 
 function triggerCelebration(side,color){
-  flashActive=true;flashFrame=0;shakeFrames=8
+  const pack=config.animation_pack||'confetti'
   const x=side==='home'?108:20
-  spawnParticles(x,15,color,30)
-  spawnParticles(x,15,'#ffffff',10)
-  spawnParticles(x,15,awayColor===color?homeColor:awayColor,8)
+
+  // Every pack: shake slightly. Minimal pack = no shake.
+  if(pack!=='minimal') shakeFrames=8
+
+  if(pack==='confetti'){
+    // classic — multicolor burst
+    flashActive=true;flashFrame=0
+    spawnParticles(x,34,color,30)
+    spawnParticles(x,34,'#ffffff',10)
+    spawnParticles(x,34,awayColor===color?homeColor:awayColor,8)
+  }
+  else if(pack==='fireworks'){
+    // radial explosion — particles in a ring pattern, more dramatic
+    flashActive=true;flashFrame=0
+    for(let i=0;i<40;i++){
+      const angle=(i/40)*Math.PI*2
+      const speed=3+Math.random()*2
+      particles.push({
+        x,y:34,
+        vx:Math.cos(angle)*speed,
+        vy:Math.sin(angle)*speed-0.5,
+        color,life:40+Math.floor(Math.random()*20),maxLife:60
+      })
+    }
+    spawnParticles(x,34,'#ffffff',10)
+  }
+  else if(pack==='flash'){
+    // full-screen strobe only, minimal particles
+    flashActive=true;flashFrame=0
+    shakeFrames=4
+    spawnParticles(x,34,color,6)
+  }
+  else if(pack==='minimal'){
+    // just a small pulse on the score — no flash, no shake, minimal particles
+    flashActive=false
+    spawnParticles(x,34,color,4)
+  }
 }
 
 function log(msg){
@@ -417,34 +565,58 @@ function log(msg){
   if(d.children.length>10)d.removeChild(d.lastChild)
 }
 
+const DEVICE_UID='demo-device-001'  // will come from NVS on real ESP32
+
+const CFG = window.ARENABOARD_CONFIG || {
+  SERVER: 'http://localhost:3001',
+  WS_PROTOCOL: 'ws',
+}
+const WS_URL = `${CFG.WS_PROTOCOL}://${CFG.SERVER.replace(/^https?:\/\//, '')}/?uid=${DEVICE_UID}&role=board`
+
 function connect(){
-  const CFG = window.ARENABOARD_CONFIG || {
-    SERVER: 'http://localhost:3001',
-    WS_PROTOCOL: 'ws',
-  }
-  const WS_URL = `${CFG.WS_PROTOCOL}://${CFG.SERVER.replace(/^https?:\/\//, '')}/?uid=demo-device-001&role=board`
   const ws=new WebSocket(WS_URL)
   const statusEl=document.getElementById('status')
   ws.onopen=()=>{
-    statusEl.textContent='ARENBOARD — CONNECTED'
+    statusEl.textContent='ARENABOARD — CONNECTED'
     statusEl.className='status connected'
     log('Connected')
   }
   ws.onmessage=(e)=>{
     const msg=JSON.parse(e.data)
+
+    // Protocol version guard (from master doc section 9)
+    if(msg.v && msg.v !== 1){
+      log(`Protocol mismatch v${msg.v}`)
+      return
+    }
+
     if(msg.type==='FULL_STATE'||msg.type==='SCORE_UPDATE'){
       state={...state,...msg.data}
       if(msg.data.home_color)homeColor=msg.data.home_color
       if(msg.data.away_color)awayColor=msg.data.away_color
     }
-    if(msg.type==='SCORE_EVENT'){
-      const col=msg.colors?.primary||'#ffffff'
+    else if(msg.type==='CONFIG_FULL'){
+      // initial config snapshot on connect
+      config={...config,...msg.data}
+      log('Config loaded')
+    }
+    else if(msg.type==='CONFIG_UPDATE'){
+      // diff from PWA — apply only changed fields
+      config={...config,...msg.data}
+      log(`Config → ${Object.keys(msg.data).join(', ')}`)
+    }
+    else if(msg.type==='SCORE_EVENT'){
+      const col=msg.colors?.primary||config.accent_color||'#ffffff'
       if(msg.reason==='THREE')scrollText='> 3 POINTER!   '
       else if(msg.reason==='LEAD_CHANGE')scrollText='> LEAD CHANGE!   '
       else if(msg.reason==='CLUTCH')scrollText='> CLUTCH TIME!   '
+      else if(msg.reason==='DUNK')scrollText='> SLAM DUNK!   '
+      else if(msg.reason==='BUZZER')scrollText='> BUZZER BEATER!   '
+      else if(msg.reason==='STEAL')scrollText='> STEAL!   '
+      else scrollText=`> ${msg.reason}!   `
       scrollX=COLS
       triggerCelebration(msg.team,col)
-      log(`EVENT — ${msg.reason}`)
+      log(`EVENT — ${msg.reason}${msg._source?' (test)':''}`)
     }
   }
   ws.onclose=()=>{
