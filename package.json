@@ -1,0 +1,18 @@
+{
+  "name": "arenaboard",
+  "version": "2.1.0",
+  "description": "ArenaBoard AI — WebSocket + REST server for live sports scoreboard",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.16.0",
+    "axios": "^1.6.7",
+    "express": "^4.18.2"
+  }
+}

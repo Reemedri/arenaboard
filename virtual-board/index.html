@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ArenaBoard Virtual</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #060606;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: monospace;
+    }
+    .outer {
+      background: #0a0a0a;
+      border: 2px solid #1a1a1a;
+      border-radius: 16px;
+      padding: 20px 24px;
+    }
+    canvas { display: block; image-rendering: pixelated; }
+    .status { color: #2a2a2a; font-size: 11px; margin-top: 8px; text-align: center; letter-spacing:.06em; }
+    .status.connected { color: #1D9E75; }
+    .status.error { color: #E24B4A; }
+    .log { margin-top: 4px; font-size: 10px; color: #222; max-height: 40px; overflow-y: auto; width: 768px; }
+    .log div { color: #2a2a2a; padding: 1px 0; }
+  </style>
+</head>
+<body>
+<div class="outer">
+  <canvas id="board" width="768" height="384"></canvas>
+</div>
+<div class="status" id="status">Connecting...</div>
+<div class="log" id="log"></div>
+
+<script src="config.js"></script>
+<script>
+const COLS=128, ROWS=64, PW=6, PH=6
+const canvas=document.getElementById('board')
+const ctx=canvas.getContext('2d')
+
+// layout
+const AX0=0,   AX1=39   // away box  0-39
+const DL=40              // divider left
+const CX0=41,  CX1=86   // center    41-86
+const DR=87              // divider right
+const HX0=88,  HX1=127  // home box  88-127
+
+let state={home_team:'WAS',away_team:'LAL',home_score:0,away_score:0,period:1,clock:'12:00',status:'WAITING'}
+let homeColor='#E31837', awayColor='#FDB927'
+let pulseFrame=0, ambientFrame=0
+let shakeX=0, shakeY=0, shakeFrames=0
+let flashActive=false, flashFrame=0
+let particles=[]
+let scrollX=128, scrollText=''
+
+// gamma 2.2
+const GAMMA=[]
+for(let i=0;i<256;i++) GAMMA[i]=Math.round(Math.pow(i/255,2.2)*255)
+function gc(hex) {
+  if(!hex||hex[0]!=='#'||hex.length<7) return hex||'#000'
+  return `rgb(${GAMMA[parseInt(hex.slice(1,3),16)||0]},${GAMMA[parseInt(hex.slice(3,5),16)||0]},${GAMMA[parseInt(hex.slice(5,7),16)||0]})`
+}
+function hexRgb(hex) {
+  if(!hex||hex[0]!=='#') return {r:0,g:0,b:0}
+  return {r:parseInt(hex.slice(1,3),16)||0,g:parseInt(hex.slice(3,5),16)||0,b:parseInt(hex.slice(5,7),16)||0}
+}
+function dimHex(hex,f) {
+  const {r,g,b}=hexRgb(hex)
+  return `#${Math.floor(r*f).toString(16).padStart(2,'0')}${Math.floor(g*f).toString(16).padStart(2,'0')}${Math.floor(b*f).toString(16).padStart(2,'0')}`
+}
+
+// small font 3x5
+const SF={
+  '0':[[1,1,1],[1,0,1],[1,0,1],[1,0,1],[1,1,1]],'1':[[0,1,0],[1,1,0],[0,1,0],[0,1,0],[1,1,1]],
+  '2':[[1,1,1],[0,0,1],[1,1,1],[1,0,0],[1,1,1]],'3':[[1,1,1],[0,0,1],[0,1,1],[0,0,1],[1,1,1]],
+  '4':[[1,0,1],[1,0,1],[1,1,1],[0,0,1],[0,0,1]],'5':[[1,1,1],[1,0,0],[1,1,1],[0,0,1],[1,1,1]],
+  '6':[[1,1,1],[1,0,0],[1,1,1],[1,0,1],[1,1,1]],'7':[[1,1,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1]],
+  '8':[[1,1,1],[1,0,1],[1,1,1],[1,0,1],[1,1,1]],'9':[[1,1,1],[1,0,1],[1,1,1],[0,0,1],[1,1,1]],
+  ':':[[0],[1],[0],[1],[0]],' ':[[0,0],[0,0],[0,0],[0,0],[0,0]],
+  'A':[[0,1,0],[1,0,1],[1,1,1],[1,0,1],[1,0,1]],'B':[[1,1,0],[1,0,1],[1,1,0],[1,0,1],[1,1,0]],
+  'C':[[1,1,1],[1,0,0],[1,0,0],[1,0,0],[1,1,1]],'D':[[1,1,0],[1,0,1],[1,0,1],[1,0,1],[1,1,0]],
+  'E':[[1,1,1],[1,0,0],[1,1,0],[1,0,0],[1,1,1]],'F':[[1,1,1],[1,0,0],[1,1,0],[1,0,0],[1,0,0]],
+  'G':[[1,1,1],[1,0,0],[1,0,1],[1,0,1],[1,1,1]],'H':[[1,0,1],[1,0,1],[1,1,1],[1,0,1],[1,0,1]],
+  'I':[[1,1,1],[0,1,0],[0,1,0],[0,1,0],[1,1,1]],'K':[[1,0,1],[1,1,0],[1,1,0],[1,0,1],[1,0,1]],
+  'L':[[1,0,0],[1,0,0],[1,0,0],[1,0,0],[1,1,1]],'M':[[1,0,1],[1,1,1],[1,1,1],[1,0,1],[1,0,1]],
+  'N':[[1,0,1],[1,1,1],[1,1,1],[1,0,1],[1,0,1]],'O':[[1,1,1],[1,0,1],[1,0,1],[1,0,1],[1,1,1]],
+  'P':[[1,1,1],[1,0,1],[1,1,1],[1,0,0],[1,0,0]],'Q':[[1,1,1],[1,0,1],[1,0,1],[1,1,1],[0,0,1]],
+  'R':[[1,1,0],[1,0,1],[1,1,0],[1,0,1],[1,0,1]],'S':[[1,1,1],[1,0,0],[1,1,1],[0,0,1],[1,1,1]],
+  'T':[[1,1,1],[0,1,0],[0,1,0],[0,1,0],[0,1,0]],'U':[[1,0,1],[1,0,1],[1,0,1],[1,0,1],[1,1,1]],
+  'V':[[1,0,1],[1,0,1],[1,0,1],[0,1,0],[0,1,0]],'W':[[1,0,1],[1,0,1],[1,1,1],[1,1,1],[1,0,1]],
+  'X':[[1,0,1],[1,0,1],[0,1,0],[1,0,1],[1,0,1]],'Y':[[1,0,1],[1,0,1],[0,1,0],[0,1,0],[0,1,0]],
+  '!':[[0,1,0],[0,1,0],[0,1,0],[0,0,0],[0,1,0]],'>':[[1,0,0],[0,1,0],[0,0,1],[0,1,0],[1,0,0]],
+  '-':[[0,0,0],[0,0,0],[1,1,1],[0,0,0],[0,0,0]],'*':[[1,0,1],[0,1,0],[1,0,1],[0,1,0],[1,0,1]],
+}
+
+// medium font 5x7
+const MF={
+  '0':[[0,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[0,1,1,1,0]],
+  '1':[[0,0,1,0,0],[0,1,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,1,1,1,0]],
+  '2':[[0,1,1,1,0],[1,0,0,0,1],[0,0,0,0,1],[0,0,0,1,0],[0,0,1,0,0],[0,1,0,0,0],[1,1,1,1,1]],
+  '3':[[1,1,1,1,0],[0,0,0,0,1],[0,0,0,0,1],[0,1,1,1,0],[0,0,0,0,1],[0,0,0,0,1],[1,1,1,1,0]],
+  '4':[[0,0,0,1,0],[0,0,1,1,0],[0,1,0,1,0],[1,0,0,1,0],[1,1,1,1,1],[0,0,0,1,0],[0,0,0,1,0]],
+  '5':[[1,1,1,1,1],[1,0,0,0,0],[1,0,0,0,0],[1,1,1,1,0],[0,0,0,0,1],[0,0,0,0,1],[1,1,1,1,0]],
+  '6':[[0,1,1,1,0],[1,0,0,0,0],[1,0,0,0,0],[1,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[0,1,1,1,0]],
+  '7':[[1,1,1,1,1],[0,0,0,0,1],[0,0,0,1,0],[0,0,1,0,0],[0,1,0,0,0],[0,1,0,0,0],[0,1,0,0,0]],
+  '8':[[0,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[0,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[0,1,1,1,0]],
+  '9':[[0,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[0,1,1,1,1],[0,0,0,0,1],[0,0,0,0,1],[0,1,1,1,0]],
+  ':':[[0],[1],[1],[0],[1],[1],[0]],
+}
+
+// bold large font 8x12
+const LF={
+  '0':[[0,0,1,1,1,1,0,0],[0,1,1,0,0,1,1,0],[1,1,0,0,0,0,1,1],[1,1,0,0,0,0,1,1],[1,1,0,0,0,0,1,1],[1,1,0,0,0,0,1,1],[1,1,0,0,0,0,1,1],[1,1,0,0,0,0,1,1],[1,1,0,0,0,0,1,1],[1,1,0,0,0,0,1,1],[0,1,1,0,0,1,1,0],[0,0,1,1,1,1,0,0]],
+  '1':[[0,0,0,1,1,0,0,0],[0,0,1,1,1,0,0,0],[0,1,1,1,1,0,0,0],[0,0,0,1,1,0,0,0],[0,0,0,1,1,0,0,0],[0,0,0,1,1,0,0,0],[0,0,0,1,1,0,0,0],[0,0,0,1,1,0,0,0],[0,0,0,1,1,0,0,0],[0,0,0,1,1,0,0,0],[0,0,0,1,1,0,0,0],[1,1,1,1,1,1,1,1]],
+  '2':[[0,0,1,1,1,1,0,0],[0,1,1,0,0,1,1,0],[1,1,0,0,0,0,1,1],[0,0,0,0,0,0,1,1],[0,0,0,0,0,1,1,0],[0,0,0,0,1,1,0,0],[0,0,0,1,1,0,0,0],[0,0,1,1,0,0,0,0],[0,1,1,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,1,1,1,1,1,1]],
+  '3':[[1,1,1,1,1,1,1,0],[0,0,0,0,0,0,1,1],[0,0,0,0,0,0,1,1],[0,0,0,0,0,1,1,0],[0,0,0,1,1,1,0,0],[0,0,0,1,1,1,0,0],[0,0,0,0,0,1,1,0],[0,0,0,0,0,0,1,1],[0,0,0,0,0,0,1,1],[0,0,0,0,0,0,1,1],[0,1,1,0,0,1,1,0],[0,0,1,1,1,1,0,0]],
+  '4':[[0,0,0,0,1,1,0,0],[0,0,0,1,1,1,0,0],[0,0,1,1,1,1,0,0],[0,1,1,0,1,1,0,0],[1,1,0,0,1,1,0,0],[1,1,0,0,1,1,0,0],[1,1,1,1,1,1,1,1],[0,0,0,0,1,1,0,0],[0,0,0,0,1,1,0,0],[0,0,0,0,1,1,0,0],[0,0,0,0,1,1,0,0],[0,0,0,0,1,1,0,0]],
+  '5':[[1,1,1,1,1,1,1,1],[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,1,1,1,1,0,0],[0,0,0,0,0,1,1,0],[0,0,0,0,0,0,1,1],[0,0,0,0,0,0,1,1],[0,0,0,0,0,0,1,1],[0,0,0,0,0,0,1,1],[0,1,1,0,0,1,1,0],[0,0,1,1,1,1,0,0]],
+  '6':[[0,0,1,1,1,1,0,0],[0,1,1,0,0,1,1,0],[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,1,1,1,1,0,0],[1,1,0,0,0,1,1,0],[1,1,0,0,0,0,1,1],[1,1,0,0,0,0,1,1],[1,1,0,0,0,0,1,1],[1,1,0,0,0,0,1,1],[0,1,1,0,0,1,1,0],[0,0,1,1,1,1,0,0]],
+  '7':[[1,1,1,1,1,1,1,1],[0,0,0,0,0,0,1,1],[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,1,1,0,0],[0,0,0,1,1,0,0,0],[0,0,0,1,1,0,0,0],[0,0,1,1,0,0,0,0],[0,0,1,1,0,0,0,0],[0,1,1,0,0,0,0,0],[0,1,1,0,0,0,0,0],[0,1,1,0,0,0,0,0]],
+  '8':[[0,0,1,1,1,1,0,0],[0,1,1,0,0,1,1,0],[1,1,0,0,0,0,1,1],[1,1,0,0,0,0,1,1],[0,1,1,0,0,1,1,0],[0,0,1,1,1,1,0,0],[0,1,1,0,0,1,1,0],[1,1,0,0,0,0,1,1],[1,1,0,0,0,0,1,1],[1,1,0,0,0,0,1,1],[0,1,1,0,0,1,1,0],[0,0,1,1,1,1,0,0]],
+  '9':[[0,0,1,1,1,1,0,0],[0,1,1,0,0,1,1,0],[1,1,0,0,0,0,1,1],[1,1,0,0,0,0,1,1],[1,1,0,0,0,0,1,1],[0,1,1,0,0,1,1,1],[0,0,1,1,1,1,1,1],[0,0,0,0,0,0,1,1],[0,0,0,0,0,0,1,1],[0,1,1,0,0,1,1,0],[0,1,1,0,0,1,1,0],[0,0,1,1,1,1,0,0]],
+}
+
+const LAYERS=4
+let layers=Array.from({length:LAYERS},()=>Array.from({length:ROWS},()=>Array(COLS).fill(null)))
+function clearLayer(l){for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)layers[l][r][c]=null}
+function px(l,x,y,col){if(x>=0&&x<COLS&&y>=0&&y<ROWS)layers[l][y][x]=col}
+function composite(){
+  const out=Array.from({length:ROWS},()=>Array(COLS).fill(null))
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)
+    for(let l=LAYERS-1;l>=0;l--){if(layers[l][r][c]){out[r][c]=layers[l][r][c];break}}
+  return out
+}
+
+function sChar(l,ch,x,y,col){
+  const g=SF[ch.toUpperCase()];if(!g)return x+4
+  for(let r=0;r<5;r++)for(let c=0;c<g[r].length;c++)if(g[r][c])px(l,x+c,y+r,col)
+  return x+g[0].length+1
+}
+function sTxt(l,str,x,y,col){let cx=x;for(const ch of str)cx=sChar(l,ch,cx,y,col);return cx}
+function sTxtW(str){let w=0;for(const ch of str){const g=SF[ch.toUpperCase()];w+=g?g[0].length+1:4}return w}
+function sTxtC(l,str,y,col,x0=0,x1=COLS){const x=x0+Math.floor((x1-x0-sTxtW(str))/2);sTxt(l,str,x,y,col)}
+
+function mChar(l,ch,x,y,col){
+  const g=MF[ch];if(!g)return x+6
+  for(let r=0;r<7;r++)for(let c=0;c<g[r].length;c++)if(g[r][c])px(l,x+c,y+r,col)
+  return x+g[0].length+1
+}
+function mTxt(l,str,x,y,col){let cx=x;for(const ch of str)cx=mChar(l,ch,cx,y,col);return cx}
+function mTxtW(str){let w=0;for(const ch of str){const g=MF[ch];w+=g?g[0].length+1:6}return w}
+function mTxtC(l,str,y,col,x0=0,x1=COLS){const tw=mTxtW(str);const x=x0+Math.floor((x1-x0-tw)/2);mTxt(l,str,x,y,col)}
+
+function lChar(l,ch,x,y,col){
+  const g=LF[ch];if(!g)return x+5
+  for(let r=0;r<12;r++)for(let c=0;c<g[r].length;c++)if(g[r][c])px(l,x+c,y+r,col)
+  return x+g[0].length+1
+}
+function lTxt(l,str,x,y,col){let cx=x;for(const ch of str)cx=lChar(l,ch,cx,y,col);return cx}
+function lTxtW(str){let w=0;for(const ch of str){const g=LF[ch];w+=g?g[0].length+1:5}return w}
+function lTxtC(l,str,y,col,x0=0,x1=COLS){
+  const tw=lTxtW(str);const x=x0+Math.floor((x1-x0-tw)/2);lTxt(l,str,x,y,col)
+}
+
+function hLine(l,y,col){for(let c=0;c<COLS;c++)px(l,c,y,col)}
+function vLine(l,x,y0,y1,col){for(let r=y0;r<=y1;r++)px(l,x,r,col)}
+function fillRect(l,x,y,w,h,col){for(let r=y;r<y+h&&r<ROWS;r++)for(let c=x;c<x+w&&c<COLS;c++)px(l,c,r,col)}
+function drawBox(l,x,y,w,h,col){
+  for(let c=x;c<x+w;c++){px(l,c,y,col);px(l,c,y+h-1,col)}
+  for(let r=y;r<y+h;r++){px(l,x,r,col);px(l,x+w-1,r,col)}
+}
+
+// team logo — pixel art 20x20
+const LOGOS = {
+  WAS: {
+    pixels:[
+      [0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0],
+      [0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
+      [0,0,0,1,1,0,0,0,0,1,1,0,0,0,0,1,1,0,0,0],
+      [0,0,1,1,0,0,2,2,0,1,1,0,2,2,0,0,1,1,0,0],
+      [0,1,1,0,0,2,2,2,0,1,1,0,2,2,2,0,0,1,1,0],
+      [1,1,0,0,2,2,0,2,0,1,1,0,2,0,2,2,0,0,1,1],
+      [1,1,0,0,2,2,2,2,0,1,1,0,2,2,2,2,0,0,1,1],
+      [1,1,0,0,0,2,2,0,0,1,1,0,0,2,2,0,0,0,1,1],
+      [1,1,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,1,1],
+      [1,1,0,0,0,0,0,1,1,0,0,1,1,0,0,0,0,0,1,1],
+      [0,1,1,0,0,0,1,1,0,0,0,0,1,1,0,0,0,1,1,0],
+      [0,0,1,1,0,1,1,0,0,0,0,0,0,1,1,0,1,1,0,0],
+      [0,0,0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,0,0,0],
+      [0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    ],
+    colors:{'1':'#002B5C','2':'#E31837'}
+  },
+  LAL: {
+    pixels:[
+      [0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0],
+      [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
+      [0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0],
+      [0,1,1,0,0,0,2,2,2,2,2,2,2,0,0,0,0,1,1,0],
+      [1,1,0,0,0,2,2,0,0,0,0,0,2,2,0,0,0,0,1,1],
+      [1,1,0,0,2,2,0,0,0,0,0,0,0,2,2,0,0,0,1,1],
+      [1,1,0,0,2,2,0,0,0,0,0,0,0,2,2,0,0,0,1,1],
+      [1,1,0,0,2,2,0,0,0,0,0,0,0,2,2,0,0,0,1,1],
+      [1,1,0,0,0,2,2,0,0,0,0,0,2,2,0,0,0,0,1,1],
+      [1,1,0,0,0,0,2,2,2,2,2,2,2,0,0,0,0,0,1,1],
+      [0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0],
+      [0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0],
+      [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
+      [0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    ],
+    colors:{'1':'#552583','2':'#FDB927'}
+  }
+}
+
+function drawLogo(abbr, x, y) {
+  const logo = LOGOS[abbr]
+  if(!logo) {
+    sTxtC(1, abbr.substring(0,3), y+7, '#ffffff', x, x+20)
+    return
+  }
+  for(let r=0;r<20;r++) for(let c=0;c<20;c++) {
+    const v=logo.pixels[r][c]
+    if(v) px(1,x+c,y+r,logo.colors[String(v)])
+  }
+}
+
+function drawAmbient(){
+  clearLayer(0)
+  const t=ambientFrame*0.02
+  const hr=hexRgb(homeColor),ar=hexRgb(awayColor)
+  for(let c=0;c<COLS;c++){
+    const wave=Math.sin(t+c*0.15)*0.5+0.5
+    const intensity=0.025+wave*0.025
+    const s=c/COLS
+    const r=Math.round((ar.r*(1-s)+hr.r*s)*intensity)
+    const g=Math.round((ar.g*(1-s)+hr.g*s)*intensity)
+    const b=Math.round((ar.b*(1-s)+hr.b*s)*intensity)
+    if(r>1||g>1||b>1){
+      const col=`#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`
+      for(let row=0;row<ROWS;row++)px(0,c,row,col)
+    }
+  }
+}
+
+function drawUI(){
+  clearLayer(1)
+  const isFinal=state.status==='STATUS_FINAL'
+
+  // ── top labels ──
+  sTxtC(1,'AWAY',1,'#ffffff',AX0,AX1+1)
+  sTxtC(1,'HOME',1,'#ffffff',HX0,HX1+1)
+
+  // ── dividers ──
+  vLine(1,DL,0,ROWS-10,'#222222')
+  vLine(1,DR,0,ROWS-10,'#222222')
+
+  // ── boxes ──
+  drawBox(1,AX0,7,AX1-AX0+1,30,'#222222')
+  drawBox(1,CX0,7,CX1-CX0+1,30,'#222222')
+  drawBox(1,HX0,7,HX1-HX0+1,30,'#222222')
+
+  // ── logos ──
+  const logoY=9
+  drawLogo(state.away_team, AX0+10, logoY)
+  drawLogo(state.home_team, HX0+10, logoY)
+
+  // ── away score ──
+  lTxtC(1,String(state.away_score),15,'#ffffff',AX0+1,AX1)
+
+  // ── home score ──
+  lTxtC(1,String(state.home_score),15,'#ffffff',HX0+1,HX1)
+
+  // ── clock — medium font ──
+  mTxtC(1,state.clock,14,'#ff5500',CX0+1,CX1)
+
+  // ── QTR ──
+  sTxtC(1,'QTR',24,'#333333',CX0+1,CX1)
+
+  // ── period ──
+  const pStr=isFinal?'FNL':state.period+'Q'
+  sTxtC(1,pStr,30,isFinal?'#ff4444':'#44dd66',CX0+1,CX1)
+
+  // ── separator ──
+  hLine(1,38,'#1e1e1e')
+
+  // ── team names ──
+  sTxtC(1,state.away_team.substring(0,3),40,awayColor,AX0,AX1+1)
+  sTxtC(1,state.home_team.substring(0,3),40,homeColor,HX0,HX1+1)
+
+  // ── stats row ──
+  sTxtC(1,'PPG APG RPG',40,'#333333',CX0,CX1+1)
+
+  // ── separator ──
+  hLine(1,48,'#1a1a1a')
+
+  // ── ticker row 50 ──
+  if(scrollText){
+    sTxt(1,scrollText,Math.floor(scrollX),50,'#ffffff')
+  }
+}
+
+function drawHUD(){
+  clearLayer(2)
+  if(state.status==='STATUS_IN_PROGRESS'){
+    const on=Math.floor(pulseFrame/15)%2===0
+    const col=on?'#ff2222':'#440000'
+    px(2,124,0,col);px(2,125,0,col)
+    px(2,124,1,col);px(2,125,1,col)
+    px(2,126,0,col);px(2,127,0,col)
+    px(2,126,1,col);px(2,127,1,col)
+    sTxtC(2,'LIVE',1,on?'#ff3333':'#660000',CX0,CX1+1)
+  }
+}
+
+function spawnParticles(x,y,color,count=30){
+  for(let i=0;i<count;i++){
+    particles.push({
+      x,y,
+      vx:(Math.random()-0.5)*4,
+      vy:-(Math.random()*4+1),
+      color,
+      life:30+Math.floor(Math.random()*25),
+      maxLife:55
+    })
+  }
+}
+
+function updateParticles(){
+  clearLayer(3)
+  particles=particles.filter(p=>p.life>0)
+  for(const p of particles){
+    p.x+=p.vx;p.vy+=0.12;p.y+=p.vy;p.life--
+    const alpha=p.life/p.maxLife
+    px(3,Math.floor(p.x),Math.floor(p.y),alpha>0.5?p.color:dimHex(p.color,alpha*2))
+  }
+}
+
+function applyFlash(){
+  if(!flashActive)return
+  flashFrame++
+  const alpha=Math.max(0,1-flashFrame/12)
+  if(alpha<=0){flashActive=false;flashFrame=0;return}
+  const val=Math.floor(alpha*200)
+  const h=val.toString(16).padStart(2,'0')
+  const col=`#${h}${h}${h}`
+  for(let r=0;r<38;r++)for(let c=0;c<COLS;c++)if(layers[1][r][c])layers[3][r][c]=col
+}
+
+function render(buf){
+  ctx.fillStyle='#000'
+  ctx.fillRect(0,0,canvas.width,canvas.height)
+  const sx=shakeFrames>0?shakeX:0
+  const sy=shakeFrames>0?shakeY:0
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      const col=buf[r][c]
+      const cx=c*PW+PW/2+sx
+      const cy=r*PH+PH/2+sy
+      if(col){
+        const rgb=hexRgb(col)
+        if((rgb.r+rgb.g+rgb.b)/3>60){
+          ctx.fillStyle=`rgba(${rgb.r},${rgb.g},${rgb.b},0.1)`
+          ctx.beginPath();ctx.arc(cx,cy,PW*0.85,0,Math.PI*2);ctx.fill()
+        }
+        ctx.fillStyle=gc(col)
+        ctx.beginPath();ctx.arc(cx,cy,PW*0.42,0,Math.PI*2);ctx.fill()
+      } else {
+        ctx.fillStyle='#0c0c0c'
+        ctx.beginPath();ctx.arc(cx,cy,PW*0.1,0,Math.PI*2);ctx.fill()
+      }
+    }
+  }
+}
+
+setInterval(()=>{
+  pulseFrame++;ambientFrame++
+  if(shakeFrames>0){
+    shakeFrames--;shakeX=(Math.random()-0.5)*5;shakeY=(Math.random()-0.5)*4
+    if(shakeFrames===0){shakeX=0;shakeY=0}
+  }
+  if(scrollText){
+    scrollX-=0.6
+    if(scrollX<-sTxtW(scrollText))scrollX=COLS
+  }
+  drawAmbient();drawUI();drawHUD();updateParticles();applyFlash()
+  render(composite())
+},50)
+
+function triggerCelebration(side,color){
+  flashActive=true;flashFrame=0;shakeFrames=8
+  const x=side==='home'?108:20
+  spawnParticles(x,15,color,30)
+  spawnParticles(x,15,'#ffffff',10)
+  spawnParticles(x,15,awayColor===color?homeColor:awayColor,8)
+}
+
+function log(msg){
+  const d=document.getElementById('log')
+  const el=document.createElement('div')
+  el.textContent=`[${new Date().toLocaleTimeString()}] ${msg}`
+  d.prepend(el)
+  if(d.children.length>10)d.removeChild(d.lastChild)
+}
+
+function connect(){
+  const CFG = window.ARENABOARD_CONFIG || {
+    SERVER: 'http://localhost:3001',
+    WS_PROTOCOL: 'ws',
+  }
+  const WS_URL = `${CFG.WS_PROTOCOL}://${CFG.SERVER.replace(/^https?:\/\//, '')}/?uid=demo-device-001&role=board`
+  const ws=new WebSocket(WS_URL)
+  const statusEl=document.getElementById('status')
+  ws.onopen=()=>{
+    statusEl.textContent='ARENBOARD — CONNECTED'
+    statusEl.className='status connected'
+    log('Connected')
+  }
+  ws.onmessage=(e)=>{
+    const msg=JSON.parse(e.data)
+    if(msg.type==='FULL_STATE'||msg.type==='SCORE_UPDATE'){
+      state={...state,...msg.data}
+      if(msg.data.home_color)homeColor=msg.data.home_color
+      if(msg.data.away_color)awayColor=msg.data.away_color
+    }
+    if(msg.type==='SCORE_EVENT'){
+      const col=msg.colors?.primary||'#ffffff'
+      if(msg.reason==='THREE')scrollText='> 3 POINTER!   '
+      else if(msg.reason==='LEAD_CHANGE')scrollText='> LEAD CHANGE!   '
+      else if(msg.reason==='CLUTCH')scrollText='> CLUTCH TIME!   '
+      scrollX=COLS
+      triggerCelebration(msg.team,col)
+      log(`EVENT — ${msg.reason}`)
+    }
+  }
+  ws.onclose=()=>{
+    statusEl.textContent='Disconnected — retrying...'
+    statusEl.className='status error'
+    setTimeout(connect,3000)
+  }
+}
+
+connect()
+</script>
+</body>
+</html>

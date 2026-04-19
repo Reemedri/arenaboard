@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0a0a0a">
+<title>ArenaBoard — My Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050507;
+    --surface: #0e0e12;
+    --surface-2: #16161c;
+    --surface-3: #1c1c24;
+    --border: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.14);
+    --text: #fafafa;
+    --text-2: #a1a1aa;
+    --text-3: #52525b;
+    --accent: #ff4d20;
+    --accent-2: #FDB927;
+    --lal: #552583;
+    --lal-gold: #FDB927;
+    --was: #002B5C;
+    --was-red: #E31837;
+    --success: #22c55e;
+    --live: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(255,77,32,0.06), transparent 40%),
+      radial-gradient(circle at 80% 90%, rgba(253,185,39,0.04), transparent 40%);
+  }
+
+  /* ─── Phone Frame ───────────────────────────────────── */
+  .phone {
+    width: 390px;
+    height: 844px;
+    background: #000;
+    border-radius: 55px;
+    padding: 12px;
+    box-shadow:
+      0 0 0 2px #1a1a1a,
+      0 0 0 10px #0a0a0a,
+      0 30px 80px rgba(0,0,0,0.6),
+      0 50px 140px rgba(255,77,32,0.08);
+    position: relative;
+  }
+  .phone::before {
+    content: '';
+    position: absolute;
+    top: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 120px;
+    height: 34px;
+    background: #000;
+    border-radius: 20px;
+    z-index: 100;
+  }
+  .screen {
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    border-radius: 44px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* ─── Status bar ─────────────────────────────────────── */
+  .status-bar {
+    height: 54px;
+    padding: 18px 32px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 15px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+  .status-bar .right { display: flex; gap: 6px; align-items: center; }
+  .signal-dots { display: flex; gap: 2px; }
+  .signal-dots span {
+    width: 3px; background: var(--text); border-radius: 1px;
+  }
+  .signal-dots span:nth-child(1) { height: 4px; }
+  .signal-dots span:nth-child(2) { height: 6px; }
+  .signal-dots span:nth-child(3) { height: 8px; }
+  .signal-dots span:nth-child(4) { height: 10px; }
+  .battery {
+    width: 26px; height: 12px; border: 1px solid var(--text); border-radius: 3px;
+    position: relative; padding: 1px;
+  }
+  .battery::after {
+    content: ''; position: absolute; right: -3px; top: 3px;
+    width: 2px; height: 4px; background: var(--text); border-radius: 0 1px 1px 0;
+  }
+  .battery-fill { height: 100%; width: 78%; background: var(--text); border-radius: 1px; }
+
+  /* ─── Header ─────────────────────────────────────────── */
+  .header {
+    padding: 8px 24px 16px;
+    flex-shrink: 0;
+  }
+  .header-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 18px;
+  }
+  .logo {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--text-2);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .logo-mark {
+    width: 22px; height: 22px;
+    background: var(--accent);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 800; color: #000;
+  }
+  .avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--lal), var(--lal-gold));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+  }
+  h1 {
+    font-size: 28px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1;
+  }
+  h1 .accent { color: var(--accent); }
+  .subtitle {
+    font-size: 13px; color: var(--text-2); margin-top: 6px;
+  }
+
+  /* ─── Device Card ────────────────────────────────────── */
+  .device-card {
+    margin: 0 20px 16px;
+    padding: 16px 18px;
+    background: linear-gradient(135deg, var(--surface-2), var(--surface));
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    display: flex; gap: 14px; align-items: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .device-card::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0; width: 120px; height: 100%;
+    background: radial-gradient(circle at 100% 50%, rgba(255,77,32,0.12), transparent 70%);
+    pointer-events: none;
+  }
+  .device-icon {
+    width: 44px; height: 44px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .device-icon::after {
+    content: '';
+    position: absolute; top: 6px; right: 6px;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 8px var(--success);
+  }
+  .device-info { flex: 1; min-width: 0; }
+  .device-name { font-size: 14px; font-weight: 600; }
+  .device-status {
+    font-size: 11px; color: var(--text-2); margin-top: 2px;
+    font-family: 'JetBrains Mono', monospace;
+    display: flex; gap: 6px; align-items: center;
+  }
+  .pulse {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--success);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.85); }
+  }
+
+  /* ─── Tabs ───────────────────────────────────────────── */
+  .tabs {
+    display: flex; gap: 4px;
+    padding: 4px;
+    margin: 0 20px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+  }
+  .tab {
+    flex: 1;
+    padding: 8px 6px;
+    background: transparent;
+    border: none;
+    color: var(--text-2);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    border-radius: 10px;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+  .tab.active {
+    background: var(--surface-3);
+    color: var(--text);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  }
+
+  /* ─── Scroll area ─────────────────────────────────────── */
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 20px 100px;
+    scrollbar-width: none;
+  }
+  .content::-webkit-scrollbar { display: none; }
+
+  .section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-3);
+    font-weight: 700;
+    margin: 16px 4px 10px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 10px;
+  }
+
+  .row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 0;
+  }
+  .row + .row { border-top: 1px solid var(--border); }
+  .row-label {
+    font-size: 14px; font-weight: 500;
+  }
+  .row-desc {
+    font-size: 11px; color: var(--text-3); margin-top: 2px;
+  }
+  .row-value {
+    font-size: 13px; color: var(--text-2); font-weight: 500;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ─── Toggle ─────────────────────────────────────────── */
+  .toggle {
+    width: 46px; height: 26px;
+    background: var(--surface-3);
+    border-radius: 13px;
+    border: 1px solid var(--border);
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 20px; height: 20px;
+    background: var(--text);
+    border-radius: 50%;
+    transition: transform 0.2s;
+  }
+  .toggle.on { background: var(--accent); border-color: var(--accent); }
+  .toggle.on::after { transform: translateX(20px); }
+
+  /* ─── Slider ─────────────────────────────────────────── */
+  .slider-row { padding: 14px 0; }
+  .slider-header {
+    display: flex; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .slider-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px; font-weight: 700;
+    color: var(--accent);
+  }
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 6px;
+    background: var(--surface-3);
+    border-radius: 3px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 22px; height: 22px;
+    background: var(--text);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid var(--accent);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 22px; height: 22px;
+    background: var(--text);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid var(--accent);
+  }
+
+  /* ─── Team Chips ─────────────────────────────────────── */
+  .team-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 8px; margin-top: 8px;
+  }
+  .team-chip {
+    padding: 10px 8px;
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.05em;
+    transition: all 0.15s;
+  }
+  .team-chip:hover { border-color: var(--border-strong); }
+  .team-chip.active {
+    background: var(--team-color, var(--accent));
+    color: #fff;
+    border-color: var(--team-color, var(--accent));
+  }
+
+  /* ─── Anim Pack ──────────────────────────────────────── */
+  .anim-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 8px; margin-top: 8px;
+  }
+  .anim-chip {
+    padding: 14px 10px;
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    color: var(--text);
+    transition: all 0.15s;
+  }
+  .anim-chip:hover { border-color: var(--border-strong); }
+  .anim-chip.active {
+    background: linear-gradient(135deg, var(--accent), #c2410c);
+    border-color: var(--accent);
+  }
+  .anim-name { font-size: 13px; font-weight: 700; }
+  .anim-desc { font-size: 10px; opacity: 0.7; margin-top: 2px; }
+
+  /* ─── Color picker ───────────────────────────────────── */
+  .color-swatches {
+    display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;
+  }
+  .swatch {
+    width: 32px; height: 32px;
+    border-radius: 10px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform 0.1s;
+  }
+  .swatch:hover { transform: scale(1.08); }
+  .swatch.active {
+    border-color: var(--text);
+    transform: scale(1.08);
+  }
+
+  /* ─── Player ──────────────────────────────────────────── */
+  .player-search {
+    width: 100%;
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    margin-top: 8px;
+  }
+  .player-search:focus { outline: none; border-color: var(--accent); }
+  .player-suggestions {
+    margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .player-pill {
+    padding: 6px 10px;
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .player-pill:hover { border-color: var(--border-strong); }
+  .player-pill.active { background: var(--lal-gold); color: #000; border-color: var(--lal-gold); }
+
+  /* ─── CTA buttons ─────────────────────────────────────── */
+  .cta {
+    width: 100%;
+    padding: 14px;
+    background: var(--accent);
+    border: none;
+    border-radius: 14px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+    transition: transform 0.1s;
+  }
+  .cta:active { transform: scale(0.98); }
+  .cta.secondary {
+    background: var(--surface-3);
+    color: var(--text);
+  }
+  .test-triggers {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+    margin-top: 10px;
+  }
+  .test-triggers button {
+    padding: 10px 4px;
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-size: 10px; font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+  }
+  .test-triggers button:hover { border-color: var(--border-strong); background: var(--surface-2); }
+
+  /* ─── Game Picker ────────────────────────────────────── */
+  .game-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 0;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-radius: 8px;
+    margin: 0 -8px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .game-item:hover { background: var(--surface-3); }
+  .game-item.active {
+    background: var(--surface-3);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .game-item + .game-item { border-top: 1px solid var(--border); }
+  .game-teams { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; }
+  .game-score { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-2); }
+  .game-live {
+    display: inline-block;
+    padding: 2px 6px;
+    background: var(--live);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    border-radius: 3px;
+    letter-spacing: 0.1em;
+    margin-right: 6px;
+  }
+
+  /* ─── Hidden tabs ─────────────────────────────────────── */
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ─── Toast ──────────────────────────────────────────── */
+  .toast {
+    position: absolute;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    padding: 10px 18px;
+    border-radius: 30px;
+    font-size: 12px;
+    font-weight: 600;
+    transition: transform 0.3s;
+    z-index: 50;
+    white-space: nowrap;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.error { background: var(--live); border-color: var(--live); }
+  .toast.success { background: var(--success); border-color: var(--success); color: #000; }
+</style>
+</head>
+<body>
+
+<div class="phone">
+  <div class="screen">
+
+    <!-- Status bar -->
+    <div class="status-bar">
+      <span id="clock-time">9:41</span>
+      <div class="right">
+        <div class="signal-dots"><span></span><span></span><span></span><span></span></div>
+        <div class="battery"><div class="battery-fill"></div></div>
+      </div>
+    </div>
+
+    <!-- Header -->
+    <div class="header">
+      <div class="header-row">
+        <div class="logo">
+          <div class="logo-mark">A</div>
+          ARENABOARD
+        </div>
+        <div class="avatar">GL</div>
+      </div>
+      <h1>My <span class="accent">Board</span></h1>
+      <div class="subtitle">Customize your ArenaBoard experience</div>
+    </div>
+
+    <!-- Device card -->
+    <div class="device-card">
+      <div class="device-icon">📺</div>
+      <div class="device-info">
+        <div class="device-name">ArenaBoard Home</div>
+        <div class="device-status">
+          <span class="pulse"></span>
+          <span id="device-uid">UID-001 · v1.0.0 · Online</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="display">Display</button>
+      <button class="tab" data-tab="team">Team</button>
+      <button class="tab" data-tab="game">Game</button>
+      <button class="tab" data-tab="test">Test</button>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+
+      <!-- TAB: Display ─────────────────────────────── -->
+      <div class="tab-panel active" data-panel="display">
+        <div class="section-title">Brightness</div>
+        <div class="card">
+          <div class="slider-row">
+            <div class="slider-header">
+              <span class="row-label">Panel brightness</span>
+              <span class="slider-val"><span id="brightness-val">80</span>%</span>
+            </div>
+            <input type="range" id="brightness" min="10" max="100" value="80" step="5">
+          </div>
+        </div>
+
+        <div class="section-title">Animation pack</div>
+        <div class="anim-grid" id="anim-grid">
+          <button class="anim-chip active" data-anim="confetti">
+            <div class="anim-name">Confetti</div>
+            <div class="anim-desc">Colorful particle burst</div>
+          </button>
+          <button class="anim-chip" data-anim="fireworks">
+            <div class="anim-name">Fireworks</div>
+            <div class="anim-desc">Radial explosion pattern</div>
+          </button>
+          <button class="anim-chip" data-anim="flash">
+            <div class="anim-name">Flash</div>
+            <div class="anim-desc">Full-screen strobe</div>
+          </button>
+          <button class="anim-chip" data-anim="minimal">
+            <div class="anim-name">Minimal</div>
+            <div class="anim-desc">Clean score pulse only</div>
+          </button>
+        </div>
+
+        <div class="section-title">Toggles</div>
+        <div class="card">
+          <div class="row">
+            <div>
+              <div class="row-label">Show shot clock</div>
+              <div class="row-desc">24-second countdown in center</div>
+            </div>
+            <div class="toggle on" data-toggle="show_shot_clock"></div>
+          </div>
+          <div class="row">
+            <div>
+              <div class="row-label">Show scrolling ticker</div>
+              <div class="row-desc">Bottom row event alerts</div>
+            </div>
+            <div class="toggle on" data-toggle="show_ticker"></div>
+          </div>
+        </div>
+
+        <div class="section-title">Clock color</div>
+        <div class="card">
+          <div class="color-swatches">
+            <div class="swatch active" style="background:#ff5500" data-color="#ff5500"></div>
+            <div class="swatch" style="background:#FFD400" data-color="#FFD400"></div>
+            <div class="swatch" style="background:#00E5FF" data-color="#00E5FF"></div>
+            <div class="swatch" style="background:#00FF6A" data-color="#00FF6A"></div>
+            <div class="swatch" style="background:#ff1fe0" data-color="#ff1fe0"></div>
+            <div class="swatch" style="background:#ffffff" data-color="#ffffff"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Team ────────────────────────────────── -->
+      <div class="tab-panel" data-panel="team">
+        <div class="section-title">Favorite team</div>
+        <div class="card">
+          <div class="team-grid" id="team-grid">
+            <div class="team-chip active" data-team="LAL" style="--team-color:#552583">LAL</div>
+            <div class="team-chip" data-team="GSW" style="--team-color:#1D428A">GSW</div>
+            <div class="team-chip" data-team="BOS" style="--team-color:#007A33">BOS</div>
+            <div class="team-chip" data-team="MIA" style="--team-color:#98002E">MIA</div>
+            <div class="team-chip" data-team="CHI" style="--team-color:#CE1141">CHI</div>
+            <div class="team-chip" data-team="NYK" style="--team-color:#006BB6">NYK</div>
+            <div class="team-chip" data-team="PHX" style="--team-color:#E56020">PHX</div>
+            <div class="team-chip" data-team="DEN" style="--team-color:#0E2240">DEN</div>
+            <div class="team-chip" data-team="MIL" style="--team-color:#00471B">MIL</div>
+          </div>
+        </div>
+
+        <div class="section-title">Favorite player</div>
+        <div class="card">
+          <input type="text" class="player-search" id="player-input" placeholder="Search LeBron, Curry, Jokic..." autocomplete="off">
+          <div class="player-suggestions">
+            <div class="player-pill active" data-player="LeBron James">LeBron</div>
+            <div class="player-pill" data-player="Stephen Curry">Curry</div>
+            <div class="player-pill" data-player="Nikola Jokic">Jokic</div>
+            <div class="player-pill" data-player="Luka Doncic">Luka</div>
+            <div class="player-pill" data-player="Jayson Tatum">Tatum</div>
+          </div>
+        </div>
+
+        <div class="section-title">Accent color override</div>
+        <div class="card">
+          <div style="font-size: 11px; color: var(--text-3); margin-bottom: 10px;">
+            Override team's default accent. Used for event highlights.
+          </div>
+          <div class="color-swatches">
+            <div class="swatch active" style="background:#FDB927" data-accent="#FDB927"></div>
+            <div class="swatch" style="background:#552583" data-accent="#552583"></div>
+            <div class="swatch" style="background:#E31837" data-accent="#E31837"></div>
+            <div class="swatch" style="background:#00E5FF" data-accent="#00E5FF"></div>
+            <div class="swatch" style="background:#22c55e" data-accent="#22c55e"></div>
+            <div class="swatch" style="background:#ff1fe0" data-accent="#ff1fe0"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Game ────────────────────────────────── -->
+      <div class="tab-panel" data-panel="game">
+        <div class="section-title">Live now <span style="color:var(--text-3);font-weight:400;margin-left:6px;text-transform:none;letter-spacing:0" id="games-updated"></span></div>
+        <div class="card" id="games-list">
+          <div style="font-size:12px;color:var(--text-3);text-align:center;padding:12px 0">
+            Loading games...
+          </div>
+        </div>
+
+        <div class="section-title">Auto-follow</div>
+        <div class="card">
+          <div class="row">
+            <div>
+              <div class="row-label">Follow my team only</div>
+              <div class="row-desc">Switch to any LAL game automatically</div>
+            </div>
+            <div class="toggle on" data-toggle="auto_follow"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Test ────────────────────────────────── -->
+      <div class="tab-panel" data-panel="test">
+        <div class="section-title">Event triggers</div>
+        <div class="card">
+          <div style="font-size: 11px; color: var(--text-3); margin-bottom: 8px;">
+            Fire test events to see your board react instantly.
+          </div>
+          <div class="test-triggers">
+            <button data-trigger="THREE">3 POINTER</button>
+            <button data-trigger="DUNK">SLAM DUNK</button>
+            <button data-trigger="LEAD_CHANGE">LEAD CHG</button>
+            <button data-trigger="CLUTCH">CLUTCH</button>
+            <button data-trigger="BUZZER">BUZZER</button>
+            <button data-trigger="STEAL">STEAL</button>
+          </div>
+        </div>
+
+        <div class="section-title">Connection</div>
+        <div class="card">
+          <div class="row">
+            <div class="row-label">Server</div>
+            <div class="row-value" id="server-status">● connected</div>
+          </div>
+          <div class="row">
+            <div class="row-label">Board</div>
+            <div class="row-value" id="board-status">● online</div>
+          </div>
+          <div class="row">
+            <div class="row-label">Protocol</div>
+            <div class="row-value">v1</div>
+          </div>
+          <div class="row">
+            <div class="row-label">Last sync</div>
+            <div class="row-value" id="last-sync">just now</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="toast" id="toast">Saved</div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+  // ─── Config state (mirrors server config) ──────────────────
+  const DEVICE_UID = 'demo-device-001'
+
+  const CFG = window.ARENABOARD_CONFIG || {
+    SERVER: 'http://localhost:3001',
+    WS_PROTOCOL: 'ws',
+  }
+  const SERVER = CFG.SERVER
+  const WS_URL = `${CFG.WS_PROTOCOL}://${CFG.SERVER.replace(/^https?:\/\//, '')}/?uid=${DEVICE_UID}&role=pwa`
+
+  const config = {
+    brightness: 80,
+    animation_pack: 'confetti',
+    favorite_team: 'LAL',
+    favorite_player: 'LeBron James',
+    accent_color: '#FDB927',
+    show_shot_clock: true,
+    show_ticker: true,
+    auto_follow: true,
+    clock_color: '#ff5500',
+  }
+
+  // ─── Clock on status bar ──────────────────────────────────
+  function updateClock() {
+    const d = new Date()
+    document.getElementById('clock-time').textContent =
+      d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0')
+  }
+  updateClock(); setInterval(updateClock, 30000)
+
+  // ─── Toast ─────────────────────────────────────────────────
+  const toast = document.getElementById('toast')
+  let toastTimer
+  function showToast(msg, type = 'default') {
+    toast.textContent = msg
+    toast.className = 'toast show ' + type
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => toast.className = 'toast', 1800)
+  }
+
+  // ─── Server communication ─────────────────────────────────
+  let ws = null
+  let wsConnected = false
+
+  function connectWS() {
+    try {
+      ws = new WebSocket(WS_URL)
+      ws.onopen = () => {
+        wsConnected = true
+        document.getElementById('server-status').textContent = '● connected'
+        document.getElementById('server-status').style.color = 'var(--success)'
+      }
+      ws.onclose = () => {
+        wsConnected = false
+        document.getElementById('server-status').textContent = '○ offline'
+        document.getElementById('server-status').style.color = 'var(--text-3)'
+        setTimeout(connectWS, 3000)
+      }
+      ws.onerror = () => { /* fall through to onclose */ }
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data)
+        if (msg.type === 'CONFIG_FULL') {
+          Object.assign(config, msg.data || {})
+          applyConfigToUI()
+        }
+      }
+    } catch (err) {
+      document.getElementById('server-status').textContent = '○ offline'
+      setTimeout(connectWS, 3000)
+    }
+  }
+  connectWS()
+
+  async function patchConfig(changes) {
+    document.getElementById('last-sync').textContent = 'syncing...'
+    try {
+      const res = await fetch(`${SERVER}/api/device/${DEVICE_UID}/config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(changes),
+      })
+      const json = await res.json()
+      document.getElementById('last-sync').textContent = 'just now'
+      showToast(`Synced · ${Object.keys(changes).join(', ')}`, 'success')
+    } catch (err) {
+      showToast('Server offline — using local preview', 'error')
+      document.getElementById('last-sync').textContent = 'offline'
+    }
+  }
+
+  // Trigger test event via server REST → server broadcasts to all boards
+  async function fireTrigger(reason) {
+    try {
+      const res = await fetch(`${SERVER}/api/device/${DEVICE_UID}/trigger`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason,
+          team: 'home',
+          accent_color: config.accent_color,
+        }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      showToast(`Fired ${reason}`, 'success')
+    } catch (err) {
+      showToast(`Trigger failed — ${err.message}`, 'error')
+    }
+  }
+
+  // ─── Apply config to UI (when loaded from server) ─────────
+  function applyConfigToUI() {
+    document.getElementById('brightness').value = config.brightness
+    document.getElementById('brightness-val').textContent = config.brightness
+
+    document.querySelectorAll('[data-anim]').forEach(el => {
+      el.classList.toggle('active', el.dataset.anim === config.animation_pack)
+    })
+    document.querySelectorAll('[data-team]').forEach(el => {
+      el.classList.toggle('active', el.dataset.team === config.favorite_team)
+    })
+    document.querySelectorAll('[data-player]').forEach(el => {
+      el.classList.toggle('active', el.dataset.player === config.favorite_player)
+    })
+    document.querySelectorAll('[data-toggle]').forEach(el => {
+      el.classList.toggle('on', !!config[el.dataset.toggle])
+    })
+    document.querySelectorAll('[data-color]').forEach(el => {
+      el.classList.toggle('active', el.dataset.color === config.clock_color)
+    })
+    document.querySelectorAll('[data-accent]').forEach(el => {
+      el.classList.toggle('active', el.dataset.accent === config.accent_color)
+    })
+  }
+
+  // ─── Wiring: Tabs ──────────────────────────────────────────
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'))
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'))
+      tab.classList.add('active')
+      document.querySelector(`[data-panel="${tab.dataset.tab}"]`).classList.add('active')
+    })
+  })
+
+  // ─── Wiring: Brightness ────────────────────────────────────
+  const brightnessEl = document.getElementById('brightness')
+  const brightnessVal = document.getElementById('brightness-val')
+  let brightnessTimer
+  brightnessEl.addEventListener('input', () => {
+    const v = parseInt(brightnessEl.value)
+    brightnessVal.textContent = v
+    config.brightness = v
+    clearTimeout(brightnessTimer)
+    brightnessTimer = setTimeout(() => patchConfig({ brightness: v }), 200)
+  })
+
+  // ─── Wiring: Animation pack ────────────────────────────────
+  document.querySelectorAll('[data-anim]').forEach(el => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('[data-anim]').forEach(x => x.classList.remove('active'))
+      el.classList.add('active')
+      config.animation_pack = el.dataset.anim
+      patchConfig({ animation_pack: el.dataset.anim })
+    })
+  })
+
+  // ─── Wiring: Toggles ──────────────────────────────────────
+  document.querySelectorAll('[data-toggle]').forEach(el => {
+    el.addEventListener('click', () => {
+      el.classList.toggle('on')
+      const key = el.dataset.toggle
+      const val = el.classList.contains('on')
+      config[key] = val
+      patchConfig({ [key]: val })
+    })
+  })
+
+  // ─── Wiring: Team picker ──────────────────────────────────
+  document.querySelectorAll('[data-team]').forEach(el => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('[data-team]').forEach(x => x.classList.remove('active'))
+      el.classList.add('active')
+      config.favorite_team = el.dataset.team
+      patchConfig({ favorite_team: el.dataset.team })
+    })
+  })
+
+  // ─── Wiring: Player picker ─────────────────────────────────
+  document.querySelectorAll('[data-player]').forEach(el => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('[data-player]').forEach(x => x.classList.remove('active'))
+      el.classList.add('active')
+      config.favorite_player = el.dataset.player
+      document.getElementById('player-input').value = el.dataset.player
+      patchConfig({ favorite_player: el.dataset.player })
+    })
+  })
+  document.getElementById('player-input').addEventListener('change', (e) => {
+    config.favorite_player = e.target.value
+    patchConfig({ favorite_player: e.target.value })
+  })
+
+  // ─── Wiring: Color swatches ───────────────────────────────
+  document.querySelectorAll('[data-color]').forEach(el => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('[data-color]').forEach(x => x.classList.remove('active'))
+      el.classList.add('active')
+      config.clock_color = el.dataset.color
+      patchConfig({ clock_color: el.dataset.color })
+    })
+  })
+  document.querySelectorAll('[data-accent]').forEach(el => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('[data-accent]').forEach(x => x.classList.remove('active'))
+      el.classList.add('active')
+      config.accent_color = el.dataset.accent
+      patchConfig({ accent_color: el.dataset.accent })
+    })
+  })
+
+  // ─── Wiring: Test triggers ────────────────────────────────
+  document.querySelectorAll('[data-trigger]').forEach(el => {
+    el.addEventListener('click', () => fireTrigger(el.dataset.trigger))
+  })
+
+  // ─── Games list (Game tab) ─────────────────────────────────
+  let activeGameId = null
+
+  async function loadGames() {
+    try {
+      const res = await fetch(`${SERVER}/api/games`)
+      const data = await res.json()
+      renderGames(data)
+    } catch (err) {
+      document.getElementById('games-list').innerHTML =
+        '<div style="font-size:12px;color:var(--live);text-align:center;padding:12px 0">Server offline</div>'
+    }
+  }
+
+  function renderGames(data) {
+    const list = document.getElementById('games-list')
+    const updated = document.getElementById('games-updated')
+
+    if (data.mock_active) {
+      updated.textContent = '· mock fallback'
+    } else {
+      const secs = Math.floor((Date.now() - data.updated_at) / 1000)
+      updated.textContent = `· updated ${secs}s ago`
+    }
+
+    const games = data.games || []
+
+    if (data.mock_active || games.length === 0) {
+      // Show the mock game as a selectable item
+      list.innerHTML = `
+        <div class="game-item" data-game-id="mock-game-001" style="cursor:pointer">
+          <div>
+            <div class="game-teams">
+              <span class="game-live">MOCK</span>LAL @ WAS
+            </div>
+            <div style="font-size:10px;color:var(--text-3);margin-top:2px">Demo game — no live NBA right now</div>
+          </div>
+          <div class="game-score">—</div>
+        </div>
+      `
+    } else {
+      // sort: live > upcoming > final
+      const sorted = [...games].sort((a, b) => {
+        const rank = g => g.is_live ? 0 : g.is_final ? 2 : 1
+        return rank(a) - rank(b)
+      })
+      list.innerHTML = sorted.map(g => {
+        const badge = g.is_live
+          ? '<span class="game-live">LIVE</span>'
+          : g.is_final
+            ? '<span class="game-live" style="background:var(--text-3)">FINAL</span>'
+            : ''
+        const score = (g.away_score + g.home_score) > 0
+          ? `${g.away_score}–${g.home_score}`
+          : '—'
+        const isActive = g.id === activeGameId ? 'active' : ''
+        return `
+          <div class="game-item ${isActive}" data-game-id="${g.id}" style="cursor:pointer">
+            <div>
+              <div class="game-teams">
+                ${badge}${g.away_team} @ ${g.home_team}
+              </div>
+              <div style="font-size:10px;color:var(--text-3);margin-top:2px">${g.status_detail || ''}</div>
+            </div>
+            <div class="game-score">${score}</div>
+          </div>
+        `
+      }).join('')
+    }
+
+    // wire click handlers
+    list.querySelectorAll('[data-game-id]').forEach(el => {
+      el.addEventListener('click', () => selectGame(el.dataset.gameId))
+    })
+  }
+
+  async function selectGame(gameId) {
+    try {
+      const res = await fetch(`${SERVER}/api/device/${DEVICE_UID}/active-game`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game_id: gameId }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      activeGameId = gameId
+      showToast('Now playing this game', 'success')
+      // visual update
+      document.querySelectorAll('[data-game-id]').forEach(el => {
+        el.classList.toggle('active', el.dataset.gameId === gameId)
+      })
+    } catch (err) {
+      showToast(`Failed — ${err.message}`, 'error')
+    }
+  }
+
+  loadGames()
+  setInterval(loadGames, 10000)
+
+  // ─── Initial config load from server ──────────────────────
+  fetch(`${SERVER}/api/device/${DEVICE_UID}/config`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.config) {
+        Object.assign(config, data.config)
+        applyConfigToUI()
+      }
+    })
+    .catch(() => { /* server not running yet — UI reflects defaults */ })
+</script>
+</body>
+</html>
