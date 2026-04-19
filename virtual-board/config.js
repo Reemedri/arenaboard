@@ -1,14 +1,10 @@
-// ArenaBoard runtime config — edit after Railway deploy
+// ArenaBoard runtime config — production (Railway)
 //
-// Local development (default):
+// To switch back to local dev, replace with:
 //   SERVER: 'http://localhost:3001'
 //   WS_PROTOCOL: 'ws'
-//
-// Production (after Railway deploy):
-//   SERVER: 'https://your-app.up.railway.app'
-//   WS_PROTOCOL: 'wss'
 
 window.ARENABOARD_CONFIG = {
-  SERVER: 'http://localhost:3001',
-  WS_PROTOCOL: 'ws',
+  SERVER: 'https://web-production-6a923.up.railway.app',
+  WS_PROTOCOL: 'wss',
 }
