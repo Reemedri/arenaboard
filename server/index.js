@@ -73,6 +73,13 @@ async function logEvent(uid, type, payload) {
   } catch (err) { console.error('logEvent:', err.message) }
 }
 
+async function logAdminAction(adminId, action, targetId, reason) {
+  if (!process.env.DATABASE_URL) return
+  try {
+    await db.query(`INSERT INTO admin_audit_log (admin_id, action, target_id, reason) VALUES ($1, $2, $3, $4)`, [adminId, action, targetId || null, reason || null])
+  } catch (err) { console.error('logAdminAction:', err.message) }
+}
+
 function generateAccessToken(user) {
   return jwt.sign({ sub: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '1h' })
 }
@@ -115,6 +122,7 @@ function requireAdmin(req, res, next) {
 }
 
 const deviceConfigs = {}
+const deviceSockets = new Map()  // uid -> ws (for targeted admin messages)
 let lastState = {}
 
 const mockState = {
@@ -157,7 +165,7 @@ const app = express()
 app.use(cors())
 app.use(express.json())
 
-app.get('/', (req, res) => res.json({ service: 'ArenaBoard Server', version: '3.1', mock: MOCK_MODE, db: !!process.env.DATABASE_URL, clients: wss?.clients?.size || 0 }))
+app.get('/', (req, res) => res.json({ service: 'ArenaBoard Server', version: '4.0', mock: MOCK_MODE, db: !!process.env.DATABASE_URL, clients: wss?.clients?.size || 0 }))
 app.get('/health', (req, res) => res.json({ ok: true }))
 app.get('/ota/check', (req, res) => {
   const latest = '1.0.0'; const current = req.query.firmware_version || '0.0.0'
@@ -191,6 +199,7 @@ app.post('/api/v1/auth/login', async (req, res) => {
     if (!user || !user.password_hash) return res.status(401).json({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' } })
     const valid = await bcrypt.compare(password, user.password_hash)
     if (!valid) return res.status(401).json({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' } })
+    if (user.suspended_at) return res.status(403).json({ error: { code: 'ACCOUNT_SUSPENDED', message: 'Account is suspended' } })
     const accessToken = generateAccessToken(user)
     const refreshToken = generateRefreshToken()
     await saveRefreshToken(user.id, refreshToken)
@@ -258,7 +267,7 @@ app.post('/api/device/:uid/trigger', (req, res) => {
 
 app.get('/api/v1/admin/users', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { rows } = await db.query('SELECT id, email, display_name, role, created_at, email_verified FROM users WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 100')
+    const { rows } = await db.query('SELECT id, email, display_name, role, created_at, email_verified, suspended_at FROM users WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 100')
     res.json({ users: rows })
   } catch (err) { res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Failed' } }) }
 })
@@ -267,6 +276,117 @@ app.get('/api/v1/admin/events', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { rows } = await db.query('SELECT * FROM events ORDER BY occurred_at DESC LIMIT 100')
     res.json({ events: rows })
+  } catch (err) { res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Failed' } }) }
+})
+
+app.get('/api/v1/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows: users } = await db.query('SELECT id, email, display_name, role, created_at, email_verified, suspended_at FROM users WHERE id = $1 AND deleted_at IS NULL', [req.params.id])
+    if (!users[0]) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'User not found' } })
+    const { rows: devices } = await db.query('SELECT id, uid, name, firmware_ver, last_heartbeat, activated_at FROM devices WHERE user_id = $1 AND deleted_at IS NULL', [req.params.id])
+    const deviceIds = devices.map(d => d.id)
+    const { rows: events } = await db.query(
+      `SELECT id, type, payload, occurred_at FROM events WHERE user_id = $1 OR device_id = ANY($2::uuid[]) ORDER BY occurred_at DESC LIMIT 50`,
+      [req.params.id, deviceIds]
+    )
+    res.json({ user: users[0], devices: devices.map(d => ({ ...d, online: deviceSockets.has(d.uid) })), events })
+  } catch (err) { console.error('admin/users/:id:', err.message); res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Failed' } }) }
+})
+
+app.post('/api/v1/admin/users/:id/suspend', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { reason } = req.body || {}
+    const { rows } = await db.query('UPDATE users SET suspended_at = now() WHERE id = $1 AND deleted_at IS NULL RETURNING id, email, suspended_at', [req.params.id])
+    if (!rows[0]) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'User not found' } })
+    await db.query('DELETE FROM refresh_tokens WHERE user_id = $1', [req.params.id])
+    await logAdminAction(req.user.sub, 'user.suspend', req.params.id, reason)
+    res.json({ ok: true, user: rows[0] })
+  } catch (err) { console.error('admin/suspend:', err.message); res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Failed' } }) }
+})
+
+app.post('/api/v1/admin/users/:id/unsuspend', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await db.query('UPDATE users SET suspended_at = NULL WHERE id = $1 AND deleted_at IS NULL RETURNING id, email, suspended_at', [req.params.id])
+    if (!rows[0]) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'User not found' } })
+    await logAdminAction(req.user.sub, 'user.unsuspend', req.params.id, null)
+    res.json({ ok: true, user: rows[0] })
+  } catch (err) { res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Failed' } }) }
+})
+
+app.post('/api/v1/admin/users/:id/impersonate', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { reason } = req.body || {}
+    const { rows } = await db.query('SELECT id, email, role FROM users WHERE id = $1 AND deleted_at IS NULL', [req.params.id])
+    const target = rows[0]
+    if (!target) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'User not found' } })
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000)
+    const jwtToken = jwt.sign({ sub: target.id, email: target.email, role: target.role, impersonated_by: req.user.sub }, JWT_SECRET, { expiresIn: '15m' })
+    const tokenHash = crypto.createHash('sha256').update(jwtToken).digest('hex')
+    await db.query('INSERT INTO impersonation_tokens (token_hash, admin_id, target_user_id, expires_at) VALUES ($1, $2, $3, $4)', [tokenHash, req.user.sub, target.id, expiresAt])
+    await logAdminAction(req.user.sub, 'user.impersonate', target.id, reason)
+    res.json({ token: jwtToken, expires_at: expiresAt, target: { id: target.id, email: target.email } })
+  } catch (err) { console.error('admin/impersonate:', err.message); res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Failed' } }) }
+})
+
+app.get('/api/v1/admin/devices', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await db.query('SELECT id, uid, user_id, name, firmware_ver, last_heartbeat, last_ip, activated_at, created_at FROM devices WHERE deleted_at IS NULL ORDER BY last_heartbeat DESC NULLS LAST LIMIT 200')
+    const devices = rows.map(d => ({ ...d, online: deviceSockets.has(d.uid) }))
+    res.json({ devices, connected: deviceSockets.size })
+  } catch (err) { res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Failed' } }) }
+})
+
+app.get('/api/v1/admin/devices/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM devices WHERE id = $1 AND deleted_at IS NULL', [req.params.id])
+    const device = rows[0]
+    if (!device) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Device not found' } })
+    const { rows: cfg } = await db.query('SELECT active_mode, settings, updated_at FROM device_configs WHERE device_id = $1', [device.id])
+    const { rows: events } = await db.query('SELECT id, type, payload, occurred_at FROM events WHERE device_id = $1 ORDER BY occurred_at DESC LIMIT 50', [device.id])
+    res.json({ device: { ...device, online: deviceSockets.has(device.uid) }, config: cfg[0] || null, events })
+  } catch (err) { console.error('admin/devices/:id:', err.message); res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Failed' } }) }
+})
+
+app.post('/api/v1/admin/devices/:id/force-reload', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await db.query('SELECT id, uid FROM devices WHERE id = $1 AND deleted_at IS NULL', [req.params.id])
+    const device = rows[0]
+    if (!device) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Device not found' } })
+    const ws = deviceSockets.get(device.uid)
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      await logAdminAction(req.user.sub, 'device.force_reload.offline', device.id, null)
+      return res.status(410).json({ error: { code: 'DEVICE_OFFLINE', message: 'Device not connected' } })
+    }
+    const saved = await getConfig(device.uid)
+    ws.send(JSON.stringify({ type: 'CONFIG_UPDATE', data: saved?.settings || {}, forced: true }))
+    await logAdminAction(req.user.sub, 'device.force_reload', device.id, null)
+    res.json({ ok: true, uid: device.uid })
+  } catch (err) { console.error('admin/force-reload:', err.message); res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Failed' } }) }
+})
+
+app.get('/api/v1/admin/metrics', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [users, devices, active, perMin] = await Promise.all([
+      db.query('SELECT COUNT(*)::int AS total FROM users WHERE deleted_at IS NULL'),
+      db.query('SELECT COUNT(*)::int AS total FROM devices WHERE deleted_at IS NULL'),
+      db.query(`SELECT COUNT(DISTINCT user_id)::int AS active FROM events WHERE type = 'user.login' AND occurred_at > now() - interval '24 hours'`),
+      db.query(`SELECT COUNT(*)::int AS total FROM events WHERE occurred_at > now() - interval '1 minute'`),
+    ])
+    res.json({
+      total_users: users.rows[0].total,
+      active_users_24h: active.rows[0].active,
+      total_devices: devices.rows[0].total,
+      devices_online: deviceSockets.size,
+      connected_clients: wss.clients.size,
+      events_per_minute: perMin.rows[0].total,
+    })
+  } catch (err) { console.error('admin/metrics:', err.message); res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Failed' } }) }
+})
+
+app.get('/api/v1/admin/audit', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await db.query(`SELECT a.id, a.admin_id, u.email AS admin_email, a.action, a.target_id, a.reason, a.occurred_at FROM admin_audit_log a LEFT JOIN users u ON u.id = a.admin_id ORDER BY a.occurred_at DESC LIMIT 100`)
+    res.json({ audit: rows })
   } catch (err) { res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Failed' } }) }
 })
 
@@ -318,6 +438,7 @@ async function pollESPN() {
 wss.on('connection', async (ws, req) => {
   const uid = new URL(req.url, 'http://x').searchParams.get('uid') || 'unknown'
   console.log(`Board connected: ${uid} — total: ${wss.clients.size}`)
+  deviceSockets.set(uid, ws)
   await getOrCreateDevice(uid)
   logEvent(uid, 'device.connect', { uid })
   if (Object.keys(lastState).length > 0) {
@@ -325,13 +446,17 @@ wss.on('connection', async (ws, req) => {
   }
   const saved = await getConfig(uid)
   if (saved) ws.send(JSON.stringify({ type: 'CONFIG_UPDATE', data: saved.settings }))
-  ws.on('close', () => { logEvent(uid, 'device.disconnect', { uid }); console.log(`Board disconnected: ${uid} — total: ${wss.clients.size}`) })
+  ws.on('close', () => {
+    if (deviceSockets.get(uid) === ws) deviceSockets.delete(uid)
+    logEvent(uid, 'device.disconnect', { uid })
+    console.log(`Board disconnected: ${uid} — total: ${wss.clients.size}`)
+  })
 })
 
 async function boot() {
   await runMigrations()
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`ArenaBoard server v3.1 running on port ${PORT}`)
+    console.log(`ArenaBoard server v4.0 running on port ${PORT}`)
     console.log(`DB: ${process.env.DATABASE_URL ? 'connected' : 'none (memory only)'}`)
     console.log(`Mode: ${MOCK_MODE ? 'MOCK' : 'ESPN live'}`)
   })
