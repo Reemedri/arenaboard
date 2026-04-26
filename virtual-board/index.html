@@ -154,6 +154,7 @@ let config={
   show_shot_clock: true,
   show_ticker: true,
   clock_color: '#ff5500',
+  active_mode: 'sport_live', // 'sport_live' | 'clock' | 'idle' — set from PWA via CONFIG_UPDATE
 }
 
 let pulseFrame=0, ambientFrame=0
@@ -430,6 +431,61 @@ function drawUI(){
   }
 }
 
+function drawClock(){
+  // Clock mode: big HH:MM in accent color, blinking colon, day+date above, seconds below.
+  // Layer 0 (ambient) keeps running underneath in team colors.
+  clearLayer(1)
+
+  const d=new Date()
+  const hh=String(d.getHours()).padStart(2,'0')
+  const mm=String(d.getMinutes()).padStart(2,'0')
+  const ss=String(d.getSeconds()).padStart(2,'0')
+  const days=['SUN','MON','TUE','WED','THU','FRI','SAT']
+  const months=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
+  const dateLine=days[d.getDay()]+' '+months[d.getMonth()]+' '+String(d.getDate())
+
+  const accent=config.accent_color||'#ff5500'
+  const colonOn=d.getSeconds()%2===0  // blink every second
+
+  // Top row: date in dim small font
+  sTxtC(1,dateLine,3,'#888888')
+
+  // Big HH:MM — large 8x12 font, 2 hour digits + colon block + 2 minute digits
+  // Layout: HH(8) gap(1) HH(8) colon-block(3) MM(8) gap(1) MM(8) = 37 visible cols, centered
+  const cy=14
+  let cx=Math.floor((COLS-37)/2)
+  cx=lChar(1,hh[0],cx,cy,accent)
+  cx=lChar(1,hh[1],cx,cy,accent)
+  // Colon — 2x2 dots top and bottom, blinks on the second
+  if(colonOn){
+    fillRect(1,cx,cy+3,2,2,accent)
+    fillRect(1,cx,cy+8,2,2,accent)
+  }
+  cx+=3
+  cx=lChar(1,mm[0],cx,cy,accent)
+  cx=lChar(1,mm[1],cx,cy,accent)
+
+  // Below: ":SS" in medium font, in clock_color
+  mTxtC(1,':'+ss,32,config.clock_color||accent)
+
+  // Bottom decorative strip — same team-color sweep as idle splash for visual continuity
+  const sweep=(ambientFrame*0.5)%COLS
+  for(let c=0;c<COLS;c++){
+    const dist=Math.min(Math.abs(c-sweep),COLS-Math.abs(c-sweep))
+    if(dist<22){
+      const intensity=(1-dist/22)*0.45
+      const baseRgb=hexRgb(c>=COLS/2?homeColor:awayColor)
+      const r2=Math.round(baseRgb.r*intensity)
+      const g2=Math.round(baseRgb.g*intensity)
+      const b2=Math.round(baseRgb.b*intensity)
+      if(r2+g2+b2>3){
+        const col=`#${r2.toString(16).padStart(2,'0')}${g2.toString(16).padStart(2,'0')}${b2.toString(16).padStart(2,'0')}`
+        px(1,c,52,col)
+      }
+    }
+  }
+}
+
 function drawIdleSplash(){
   // Idle screen: shown when boardMode==='idle' (no live games, no recent final).
   // Layer 0 (ambient) keeps running underneath so the screen still feels alive in team colors.
@@ -580,7 +636,14 @@ setInterval(()=>{
   drawAmbient()
   // Auto-flip from 'final' back to 'idle' after the 5-minute final-score window expires
   if(boardMode==='final' && Date.now() >= finalUntil) boardMode='idle'
-  if(boardMode==='idle'){
+  // Determine what to draw — config.active_mode (set by PWA) overrides the auto-tracked boardMode
+  let visualMode
+  if(config.active_mode==='clock') visualMode='clock'
+  else if(config.active_mode==='idle') visualMode='idle'
+  else visualMode=boardMode  // 'sport_live' or undefined → fall back to live/final/idle auto-tracking
+  if(visualMode==='clock'){
+    drawClock()
+  } else if(visualMode==='idle'){
     drawIdleSplash()
   } else {
     drawUI()

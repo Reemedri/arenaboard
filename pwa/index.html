@@ -43,6 +43,40 @@
       radial-gradient(circle at 80% 90%, rgba(253,185,39,0.04), transparent 40%);
   }
 
+  /* ─── Mode picker (Sprint 1) ──────────────────────────── */
+  .mode-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .mode-chip {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 8px;
+    color: var(--text);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .mode-chip:hover { background: var(--surface-3); }
+  .mode-chip.active {
+    background: linear-gradient(135deg, rgba(255,77,32,0.15), rgba(253,185,39,0.05));
+    border-color: var(--accent);
+  }
+  .mode-name {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .mode-desc {
+    font-size: 9px;
+    color: var(--text-3);
+    line-height: 1.2;
+  }
+  .mode-chip.active .mode-name { color: var(--accent); }
+
   /* ─── Phone Frame ───────────────────────────────────── */
   .phone {
     width: 390px;
@@ -567,6 +601,23 @@
 
       <!-- TAB: Display ─────────────────────────────── -->
       <div class="tab-panel active" data-panel="display">
+
+        <div class="section-title">Display mode</div>
+        <div class="mode-grid" id="mode-grid">
+          <button class="mode-chip active" data-mode="sport_live">
+            <div class="mode-name">Sport</div>
+            <div class="mode-desc">Live NBA scoreboard</div>
+          </button>
+          <button class="mode-chip" data-mode="clock">
+            <div class="mode-name">Clock</div>
+            <div class="mode-desc">Time + date</div>
+          </button>
+          <button class="mode-chip" data-mode="idle">
+            <div class="mode-name">Idle</div>
+            <div class="mode-desc">Branded splash</div>
+          </button>
+        </div>
+
         <div class="section-title">Brightness</div>
         <div class="card">
           <div class="slider-row">
@@ -761,6 +812,7 @@
     show_ticker: true,
     auto_follow: true,
     clock_color: '#ff5500',
+    active_mode: 'sport_live', // 'sport_live' | 'clock' | 'idle'
   }
 
   // ─── Clock on status bar ──────────────────────────────────
@@ -873,6 +925,9 @@
     document.querySelectorAll('[data-accent]').forEach(el => {
       el.classList.toggle('active', el.dataset.accent === config.accent_color)
     })
+    document.querySelectorAll('[data-mode]').forEach(el => {
+      el.classList.toggle('active', el.dataset.mode === config.active_mode)
+    })
   }
 
   // ─── Wiring: Tabs ──────────────────────────────────────────
@@ -958,6 +1013,16 @@
       el.classList.add('active')
       config.accent_color = el.dataset.accent
       patchConfig({ accent_color: el.dataset.accent })
+    })
+  })
+
+  // ─── Wiring: Mode picker (Sprint 1) ───────────────────────
+  document.querySelectorAll('[data-mode]').forEach(el => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('[data-mode]').forEach(x => x.classList.remove('active'))
+      el.classList.add('active')
+      config.active_mode = el.dataset.mode
+      patchConfig({ active_mode: el.dataset.mode })
     })
   })
 
