@@ -2,1143 +2,729 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#0a0a0a">
-<title>ArenaBoard — My Board</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#08090D">
+<title>ArenaBoard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:ital,wght@0,400;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #050507;
-    --surface: #0e0e12;
-    --surface-2: #16161c;
-    --surface-3: #1c1c24;
-    --border: rgba(255,255,255,0.08);
-    --border-strong: rgba(255,255,255,0.14);
-    --text: #fafafa;
-    --text-2: #a1a1aa;
-    --text-3: #52525b;
-    --accent: #ff4d20;
-    --accent-2: #FDB927;
-    --lal: #552583;
-    --lal-gold: #FDB927;
-    --was: #002B5C;
-    --was-red: #E31837;
-    --success: #22c55e;
-    --live: #ef4444;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
   body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Inter', system-ui, sans-serif;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    background-image:
-      radial-gradient(circle at 20% 10%, rgba(255,77,32,0.06), transparent 40%),
-      radial-gradient(circle at 80% 90%, rgba(253,185,39,0.04), transparent 40%);
-  }
-
-  /* ─── Mode picker (Sprint 1) ──────────────────────────── */
-  .mode-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-  }
-  .mode-chip {
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 12px 8px;
-    color: var(--text);
-    cursor: pointer;
-    text-align: center;
-    transition: all 0.15s;
-    font-family: inherit;
-  }
-  .mode-chip:hover { background: var(--surface-3); }
-  .mode-chip.active {
-    background: linear-gradient(135deg, rgba(255,77,32,0.15), rgba(253,185,39,0.05));
-    border-color: var(--accent);
-  }
-  .mode-name {
-    font-size: 13px;
-    font-weight: 600;
-    margin-bottom: 2px;
-  }
-  .mode-desc {
-    font-size: 9px;
-    color: var(--text-3);
-    line-height: 1.2;
-  }
-  .mode-chip.active .mode-name { color: var(--accent); }
-
-  /* ─── Phone Frame ───────────────────────────────────── */
-  .phone {
-    width: 390px;
-    height: 844px;
-    background: #000;
-    border-radius: 55px;
-    padding: 12px;
-    box-shadow:
-      0 0 0 2px #1a1a1a,
-      0 0 0 10px #0a0a0a,
-      0 30px 80px rgba(0,0,0,0.6),
-      0 50px 140px rgba(255,77,32,0.08);
-    position: relative;
-  }
-  .phone::before {
-    content: '';
-    position: absolute;
-    top: 28px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 120px;
-    height: 34px;
-    background: #000;
-    border-radius: 20px;
-    z-index: 100;
-  }
-  .screen {
-    width: 100%;
-    height: 100%;
-    background: var(--bg);
-    border-radius: 44px;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    position: relative;
-  }
-
-  /* ─── Status bar ─────────────────────────────────────── */
-  .status-bar {
-    height: 54px;
-    padding: 18px 32px 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 15px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    flex-shrink: 0;
-  }
-  .status-bar .right { display: flex; gap: 6px; align-items: center; }
-  .signal-dots { display: flex; gap: 2px; }
-  .signal-dots span {
-    width: 3px; background: var(--text); border-radius: 1px;
-  }
-  .signal-dots span:nth-child(1) { height: 4px; }
-  .signal-dots span:nth-child(2) { height: 6px; }
-  .signal-dots span:nth-child(3) { height: 8px; }
-  .signal-dots span:nth-child(4) { height: 10px; }
-  .battery {
-    width: 26px; height: 12px; border: 1px solid var(--text); border-radius: 3px;
-    position: relative; padding: 1px;
-  }
-  .battery::after {
-    content: ''; position: absolute; right: -3px; top: 3px;
-    width: 2px; height: 4px; background: var(--text); border-radius: 0 1px 1px 0;
-  }
-  .battery-fill { height: 100%; width: 78%; background: var(--text); border-radius: 1px; }
-
-  /* ─── Header ─────────────────────────────────────────── */
-  .header {
-    padding: 8px 24px 16px;
-    flex-shrink: 0;
-  }
-  .header-row {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 18px;
-  }
-  .logo {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    color: var(--text-2);
-    display: flex; align-items: center; gap: 8px;
-  }
-  .logo-mark {
-    width: 22px; height: 22px;
-    background: var(--accent);
-    border-radius: 6px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 800; color: #000;
-  }
-  .avatar {
-    width: 32px; height: 32px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--lal), var(--lal-gold));
-    display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 700;
-  }
-  h1 {
-    font-size: 28px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1;
-  }
-  h1 .accent { color: var(--accent); }
-  .subtitle {
-    font-size: 13px; color: var(--text-2); margin-top: 6px;
-  }
-
-  /* ─── Device Card ────────────────────────────────────── */
-  .device-card {
-    margin: 0 20px 16px;
-    padding: 16px 18px;
-    background: linear-gradient(135deg, var(--surface-2), var(--surface));
-    border: 1px solid var(--border);
-    border-radius: 18px;
-    display: flex; gap: 14px; align-items: center;
-    position: relative;
-    overflow: hidden;
-  }
-  .device-card::before {
-    content: '';
-    position: absolute;
-    top: 0; right: 0; width: 120px; height: 100%;
-    background: radial-gradient(circle at 100% 50%, rgba(255,77,32,0.12), transparent 70%);
-    pointer-events: none;
-  }
-  .device-icon {
-    width: 44px; height: 44px;
-    background: var(--surface-3);
-    border: 1px solid var(--border-strong);
-    border-radius: 12px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 20px;
-    flex-shrink: 0;
-    position: relative;
-  }
-  .device-icon::after {
-    content: '';
-    position: absolute; top: 6px; right: 6px;
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--success);
-    box-shadow: 0 0 8px var(--success);
-  }
-  .device-info { flex: 1; min-width: 0; }
-  .device-name { font-size: 14px; font-weight: 600; }
-  .device-status {
-    font-size: 11px; color: var(--text-2); margin-top: 2px;
-    font-family: 'JetBrains Mono', monospace;
-    display: flex; gap: 6px; align-items: center;
-  }
-  .pulse {
-    width: 6px; height: 6px; border-radius: 50%; background: var(--success);
-    animation: pulse 2s infinite;
-  }
-  @keyframes pulse {
-    0%,100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(0.85); }
-  }
-
-  /* ─── Tabs ───────────────────────────────────────────── */
-  .tabs {
-    display: flex; gap: 4px;
-    padding: 4px;
-    margin: 0 20px 12px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-  }
-  .tab {
-    flex: 1;
-    padding: 8px 6px;
-    background: transparent;
-    border: none;
-    color: var(--text-2);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    cursor: pointer;
-    border-radius: 10px;
-    transition: all 0.2s;
-    font-family: inherit;
-  }
-  .tab.active {
-    background: var(--surface-3);
-    color: var(--text);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.5);
-  }
-
-  /* ─── Scroll area ─────────────────────────────────────── */
-  .content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 4px 20px 100px;
-    scrollbar-width: none;
-  }
-  .content::-webkit-scrollbar { display: none; }
-
-  .section-title {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.15em;
-    color: var(--text-3);
-    font-weight: 700;
-    margin: 16px 4px 10px;
-  }
-
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 16px;
-    margin-bottom: 10px;
-  }
-
-  .row {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 10px 0;
-  }
-  .row + .row { border-top: 1px solid var(--border); }
-  .row-label {
-    font-size: 14px; font-weight: 500;
-  }
-  .row-desc {
-    font-size: 11px; color: var(--text-3); margin-top: 2px;
-  }
-  .row-value {
-    font-size: 13px; color: var(--text-2); font-weight: 500;
-    font-family: 'JetBrains Mono', monospace;
-  }
-
-  /* ─── Toggle ─────────────────────────────────────────── */
-  .toggle {
-    width: 46px; height: 26px;
-    background: var(--surface-3);
-    border-radius: 13px;
-    border: 1px solid var(--border);
-    position: relative;
-    cursor: pointer;
-    transition: background 0.2s;
-    flex-shrink: 0;
-  }
-  .toggle::after {
-    content: '';
-    position: absolute;
-    top: 2px; left: 2px;
-    width: 20px; height: 20px;
-    background: var(--text);
-    border-radius: 50%;
-    transition: transform 0.2s;
-  }
-  .toggle.on { background: var(--accent); border-color: var(--accent); }
-  .toggle.on::after { transform: translateX(20px); }
-
-  /* ─── Slider ─────────────────────────────────────────── */
-  .slider-row { padding: 14px 0; }
-  .slider-header {
-    display: flex; justify-content: space-between;
-    margin-bottom: 12px;
-  }
-  .slider-val {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 14px; font-weight: 700;
-    color: var(--accent);
-  }
-  input[type="range"] {
-    -webkit-appearance: none; appearance: none;
-    width: 100%; height: 6px;
-    background: var(--surface-3);
-    border-radius: 3px;
-    outline: none;
-  }
-  input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none; appearance: none;
-    width: 22px; height: 22px;
-    background: var(--text);
-    border-radius: 50%;
-    cursor: pointer;
-    border: 3px solid var(--accent);
-  }
-  input[type="range"]::-moz-range-thumb {
-    width: 22px; height: 22px;
-    background: var(--text);
-    border-radius: 50%;
-    cursor: pointer;
-    border: 3px solid var(--accent);
-  }
-
-  /* ─── Team Chips ─────────────────────────────────────── */
-  .team-grid {
-    display: grid; grid-template-columns: repeat(3, 1fr);
-    gap: 8px; margin-top: 8px;
-  }
-  .team-chip {
-    padding: 10px 8px;
-    background: var(--surface-3);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    font-size: 12px;
-    font-weight: 700;
-    text-align: center;
-    cursor: pointer;
-    font-family: 'JetBrains Mono', monospace;
-    letter-spacing: 0.05em;
-    transition: all 0.15s;
-  }
-  .team-chip:hover { border-color: var(--border-strong); }
-  .team-chip.active {
-    background: var(--team-color, var(--accent));
-    color: #fff;
-    border-color: var(--team-color, var(--accent));
-  }
-
-  /* ─── Anim Pack ──────────────────────────────────────── */
-  .anim-grid {
-    display: grid; grid-template-columns: 1fr 1fr;
-    gap: 8px; margin-top: 8px;
-  }
-  .anim-chip {
-    padding: 14px 10px;
-    background: var(--surface-3);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    cursor: pointer;
-    text-align: left;
-    font-family: inherit;
-    color: var(--text);
-    transition: all 0.15s;
-  }
-  .anim-chip:hover { border-color: var(--border-strong); }
-  .anim-chip.active {
-    background: linear-gradient(135deg, var(--accent), #c2410c);
-    border-color: var(--accent);
-  }
-  .anim-name { font-size: 13px; font-weight: 700; }
-  .anim-desc { font-size: 10px; opacity: 0.7; margin-top: 2px; }
-
-  /* ─── Color picker ───────────────────────────────────── */
-  .color-swatches {
-    display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;
-  }
-  .swatch {
-    width: 32px; height: 32px;
-    border-radius: 10px;
-    cursor: pointer;
-    border: 2px solid transparent;
-    transition: transform 0.1s;
-  }
-  .swatch:hover { transform: scale(1.08); }
-  .swatch.active {
-    border-color: var(--text);
-    transform: scale(1.08);
-  }
-
-  /* ─── Player ──────────────────────────────────────────── */
-  .player-search {
-    width: 100%;
-    background: var(--surface-3);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px 12px;
-    color: var(--text);
-    font-size: 13px;
-    font-family: inherit;
-    margin-top: 8px;
-  }
-  .player-search:focus { outline: none; border-color: var(--accent); }
-  .player-suggestions {
-    margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap;
-  }
-  .player-pill {
-    padding: 6px 10px;
-    background: var(--surface-3);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .player-pill:hover { border-color: var(--border-strong); }
-  .player-pill.active { background: var(--lal-gold); color: #000; border-color: var(--lal-gold); }
-
-  /* ─── CTA buttons ─────────────────────────────────────── */
-  .cta {
-    width: 100%;
-    padding: 14px;
-    background: var(--accent);
-    border: none;
-    border-radius: 14px;
-    color: #fff;
-    font-size: 15px;
-    font-weight: 700;
-    font-family: inherit;
-    cursor: pointer;
-    letter-spacing: 0.02em;
-    transition: transform 0.1s;
-  }
-  .cta:active { transform: scale(0.98); }
-  .cta.secondary {
-    background: var(--surface-3);
-    color: var(--text);
-  }
-  .test-triggers {
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
-    margin-top: 10px;
-  }
-  .test-triggers button {
-    padding: 10px 4px;
-    background: var(--surface-3);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    color: var(--text);
-    font-size: 10px; font-weight: 700;
-    font-family: 'JetBrains Mono', monospace;
-    cursor: pointer;
-    letter-spacing: 0.05em;
-  }
-  .test-triggers button:hover { border-color: var(--border-strong); background: var(--surface-2); }
-
-  /* ─── Game Picker ────────────────────────────────────── */
-  .game-item {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 0;
-    cursor: pointer;
-    transition: background 0.15s;
-    border-radius: 8px;
-    margin: 0 -8px;
-    padding-left: 8px;
-    padding-right: 8px;
-  }
-  .game-item:hover { background: var(--surface-3); }
-  .game-item.active {
-    background: var(--surface-3);
-    box-shadow: inset 3px 0 0 var(--accent);
-  }
-  .game-item + .game-item { border-top: 1px solid var(--border); }
-  .game-teams { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; }
-  .game-score { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-2); }
-  .game-live {
-    display: inline-block;
-    padding: 2px 6px;
-    background: var(--live);
-    color: #fff;
-    font-size: 9px;
-    font-weight: 800;
-    border-radius: 3px;
-    letter-spacing: 0.1em;
-    margin-right: 6px;
-  }
-
-  /* ─── Hidden tabs ─────────────────────────────────────── */
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
-
-  /* ─── Toast ──────────────────────────────────────────── */
-  .toast {
-    position: absolute;
-    bottom: 24px; left: 50%;
-    transform: translateX(-50%) translateY(100px);
-    background: var(--surface-3);
-    border: 1px solid var(--border-strong);
-    padding: 10px 18px;
-    border-radius: 30px;
-    font-size: 12px;
-    font-weight: 600;
-    transition: transform 0.3s;
-    z-index: 50;
-    white-space: nowrap;
-  }
-  .toast.show { transform: translateX(-50%) translateY(0); }
-  .toast.error { background: var(--live); border-color: var(--live); }
-  .toast.success { background: var(--success); border-color: var(--success); color: #000; }
+    background: #08090D;
+    color: #F5F6FA;
+    font-family: -apple-system, "SF Pro Display", "Inter", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+  #root { min-height: 100vh; display: flex; flex-direction: column; }
+  button { font-family: inherit; }
+  input[type="range"] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1); outline: none; }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #FF6A1A; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
+  input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #FF6A1A; cursor: pointer; border: none; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
+  ::-webkit-scrollbar { width: 0; height: 0; }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  @keyframes radar-pulse { 0% { transform: scale(0.7); opacity: 0.6; } 100% { transform: scale(1.6); opacity: 0; } }
+  @keyframes pop-in { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  @keyframes fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .screen-fade { animation: fade-in 280ms ease-out; }
 </style>
 </head>
 <body>
-
-<div class="phone">
-  <div class="screen">
-
-    <!-- Status bar -->
-    <div class="status-bar">
-      <span id="clock-time">9:41</span>
-      <div class="right">
-        <div class="signal-dots"><span></span><span></span><span></span><span></span></div>
-        <div class="battery"><div class="battery-fill"></div></div>
-      </div>
-    </div>
-
-    <!-- Header -->
-    <div class="header">
-      <div class="header-row">
-        <div class="logo">
-          <div class="logo-mark">A</div>
-          ARENABOARD
-        </div>
-        <div class="avatar">GL</div>
-      </div>
-      <h1>My <span class="accent">Board</span></h1>
-      <div class="subtitle">Customize your ArenaBoard experience</div>
-    </div>
-
-    <!-- Device card -->
-    <div class="device-card">
-      <div class="device-icon">📺</div>
-      <div class="device-info">
-        <div class="device-name">ArenaBoard Home</div>
-        <div class="device-status">
-          <span class="pulse"></span>
-          <span id="device-uid">UID-001 · v1.0.0 · Online</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Tabs -->
-    <div class="tabs">
-      <button class="tab active" data-tab="display">Display</button>
-      <button class="tab" data-tab="team">Team</button>
-      <button class="tab" data-tab="game">Game</button>
-      <button class="tab" data-tab="test">Test</button>
-    </div>
-
-    <!-- Content -->
-    <div class="content">
-
-      <!-- TAB: Display ─────────────────────────────── -->
-      <div class="tab-panel active" data-panel="display">
-
-        <div class="section-title">Display mode</div>
-        <div class="mode-grid" id="mode-grid">
-          <button class="mode-chip active" data-mode="sport_live">
-            <div class="mode-name">Sport</div>
-            <div class="mode-desc">Live NBA scoreboard</div>
-          </button>
-          <button class="mode-chip" data-mode="clock">
-            <div class="mode-name">Clock</div>
-            <div class="mode-desc">Time + date</div>
-          </button>
-          <button class="mode-chip" data-mode="idle">
-            <div class="mode-name">Idle</div>
-            <div class="mode-desc">Branded splash</div>
-          </button>
-        </div>
-
-        <div class="section-title">Brightness</div>
-        <div class="card">
-          <div class="slider-row">
-            <div class="slider-header">
-              <span class="row-label">Panel brightness</span>
-              <span class="slider-val"><span id="brightness-val">80</span>%</span>
-            </div>
-            <input type="range" id="brightness" min="10" max="100" value="80" step="5">
-          </div>
-        </div>
-
-        <div class="section-title">Animation pack</div>
-        <div class="anim-grid" id="anim-grid">
-          <button class="anim-chip active" data-anim="confetti">
-            <div class="anim-name">Confetti</div>
-            <div class="anim-desc">Colorful particle burst</div>
-          </button>
-          <button class="anim-chip" data-anim="fireworks">
-            <div class="anim-name">Fireworks</div>
-            <div class="anim-desc">Radial explosion pattern</div>
-          </button>
-          <button class="anim-chip" data-anim="flash">
-            <div class="anim-name">Flash</div>
-            <div class="anim-desc">Full-screen strobe</div>
-          </button>
-          <button class="anim-chip" data-anim="minimal">
-            <div class="anim-name">Minimal</div>
-            <div class="anim-desc">Clean score pulse only</div>
-          </button>
-        </div>
-
-        <div class="section-title">Toggles</div>
-        <div class="card">
-          <div class="row">
-            <div>
-              <div class="row-label">Show shot clock</div>
-              <div class="row-desc">24-second countdown in center</div>
-            </div>
-            <div class="toggle on" data-toggle="show_shot_clock"></div>
-          </div>
-          <div class="row">
-            <div>
-              <div class="row-label">Show scrolling ticker</div>
-              <div class="row-desc">Bottom row event alerts</div>
-            </div>
-            <div class="toggle on" data-toggle="show_ticker"></div>
-          </div>
-        </div>
-
-        <div class="section-title">Clock color</div>
-        <div class="card">
-          <div class="color-swatches">
-            <div class="swatch active" style="background:#ff5500" data-color="#ff5500"></div>
-            <div class="swatch" style="background:#FFD400" data-color="#FFD400"></div>
-            <div class="swatch" style="background:#00E5FF" data-color="#00E5FF"></div>
-            <div class="swatch" style="background:#00FF6A" data-color="#00FF6A"></div>
-            <div class="swatch" style="background:#ff1fe0" data-color="#ff1fe0"></div>
-            <div class="swatch" style="background:#ffffff" data-color="#ffffff"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- TAB: Team ────────────────────────────────── -->
-      <div class="tab-panel" data-panel="team">
-        <div class="section-title">Favorite team</div>
-        <div class="card">
-          <div class="team-grid" id="team-grid">
-            <div class="team-chip active" data-team="LAL" style="--team-color:#552583">LAL</div>
-            <div class="team-chip" data-team="GSW" style="--team-color:#1D428A">GSW</div>
-            <div class="team-chip" data-team="BOS" style="--team-color:#007A33">BOS</div>
-            <div class="team-chip" data-team="MIA" style="--team-color:#98002E">MIA</div>
-            <div class="team-chip" data-team="CHI" style="--team-color:#CE1141">CHI</div>
-            <div class="team-chip" data-team="NYK" style="--team-color:#006BB6">NYK</div>
-            <div class="team-chip" data-team="PHX" style="--team-color:#E56020">PHX</div>
-            <div class="team-chip" data-team="DEN" style="--team-color:#0E2240">DEN</div>
-            <div class="team-chip" data-team="MIL" style="--team-color:#00471B">MIL</div>
-          </div>
-        </div>
-
-        <div class="section-title">Favorite player</div>
-        <div class="card">
-          <input type="text" class="player-search" id="player-input" placeholder="Search LeBron, Curry, Jokic..." autocomplete="off">
-          <div class="player-suggestions">
-            <div class="player-pill active" data-player="LeBron James">LeBron</div>
-            <div class="player-pill" data-player="Stephen Curry">Curry</div>
-            <div class="player-pill" data-player="Nikola Jokic">Jokic</div>
-            <div class="player-pill" data-player="Luka Doncic">Luka</div>
-            <div class="player-pill" data-player="Jayson Tatum">Tatum</div>
-          </div>
-        </div>
-
-        <div class="section-title">Accent color override</div>
-        <div class="card">
-          <div style="font-size: 11px; color: var(--text-3); margin-bottom: 10px;">
-            Override team's default accent. Used for event highlights.
-          </div>
-          <div class="color-swatches">
-            <div class="swatch active" style="background:#FDB927" data-accent="#FDB927"></div>
-            <div class="swatch" style="background:#552583" data-accent="#552583"></div>
-            <div class="swatch" style="background:#E31837" data-accent="#E31837"></div>
-            <div class="swatch" style="background:#00E5FF" data-accent="#00E5FF"></div>
-            <div class="swatch" style="background:#22c55e" data-accent="#22c55e"></div>
-            <div class="swatch" style="background:#ff1fe0" data-accent="#ff1fe0"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- TAB: Game ────────────────────────────────── -->
-      <div class="tab-panel" data-panel="game">
-        <div class="section-title">Live now <span style="color:var(--text-3);font-weight:400;margin-left:6px;text-transform:none;letter-spacing:0" id="games-updated"></span></div>
-        <div class="card" id="games-list">
-          <div style="font-size:12px;color:var(--text-3);text-align:center;padding:12px 0">
-            Loading games...
-          </div>
-        </div>
-
-        <div class="section-title">Auto-follow</div>
-        <div class="card">
-          <div class="row">
-            <div>
-              <div class="row-label">Follow my team only</div>
-              <div class="row-desc">Switch to any LAL game automatically</div>
-            </div>
-            <div class="toggle on" data-toggle="auto_follow"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- TAB: Test ────────────────────────────────── -->
-      <div class="tab-panel" data-panel="test">
-        <div class="section-title">Event triggers</div>
-        <div class="card">
-          <div style="font-size: 11px; color: var(--text-3); margin-bottom: 8px;">
-            Fire test events to see your board react instantly.
-          </div>
-          <div class="test-triggers">
-            <button data-trigger="THREE">3 POINTER</button>
-            <button data-trigger="DUNK">SLAM DUNK</button>
-            <button data-trigger="LEAD_CHANGE">LEAD CHG</button>
-            <button data-trigger="CLUTCH">CLUTCH</button>
-            <button data-trigger="BUZZER">BUZZER</button>
-            <button data-trigger="STEAL">STEAL</button>
-          </div>
-        </div>
-
-        <div class="section-title">Connection</div>
-        <div class="card">
-          <div class="row">
-            <div class="row-label">Server</div>
-            <div class="row-value" id="server-status">● connected</div>
-          </div>
-          <div class="row">
-            <div class="row-label">Board</div>
-            <div class="row-value" id="board-status">● online</div>
-          </div>
-          <div class="row">
-            <div class="row-label">Protocol</div>
-            <div class="row-value">v1</div>
-          </div>
-          <div class="row">
-            <div class="row-label">Last sync</div>
-            <div class="row-value" id="last-sync">just now</div>
-          </div>
-        </div>
-      </div>
-
-    </div>
-
-    <div class="toast" id="toast">Saved</div>
-  </div>
+<div id="root">
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-size:13px;letter-spacing:2px;font-family:'JetBrains Mono',monospace">LOADING ARENABOARD…</div>
 </div>
-
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
 <script src="config.js"></script>
-<script>
-  // ─── Config state (mirrors server config) ──────────────────
-  const DEVICE_UID = 'demo-device-001'
+<script type="text/babel" data-presets="env,react">
+"use strict"
 
-  const CFG = window.ARENABOARD_CONFIG || {
-    SERVER: 'http://localhost:3001',
-    WS_PROTOCOL: 'ws',
-  }
-  const SERVER = CFG.SERVER
-  const WS_URL = `${CFG.WS_PROTOCOL}://${CFG.SERVER.replace(/^https?:\/\//, '')}/?uid=${DEVICE_UID}&role=pwa`
+// ─── Theme ──────────────────────────────────────────────────────────
+const APP = {
+  bg: '#08090D', bg2: '#0F1117',
+  card: '#141720', cardElev: '#1A1E29',
+  line: 'rgba(255,255,255,0.06)', lineBold: 'rgba(255,255,255,0.1)',
+  text: '#F5F6FA', textMuted: 'rgba(245,246,250,0.55)', textDim: 'rgba(245,246,250,0.35)',
+  accent: '#FF6A1A', accent2: '#4DE8D4',
+  danger: '#FF3B3B', good: '#3FDC68',
+  home: '#FF6A1A', away: '#5090FF', gold: '#E8B765',
+}
+const TYPE = {
+  display: '"Fraunces","Playfair Display",Georgia,serif',
+  sans: '-apple-system,"SF Pro Display","Inter",system-ui,sans-serif',
+  mono: '"JetBrains Mono","SF Mono",ui-monospace,monospace',
+}
+const Icon = {
+  back:   (c=APP.text)     => <svg width="10" height="16" viewBox="0 0 10 16"><path d="M8 2L2 8l6 6" stroke={c} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  chev:   (c=APP.textDim)  => <svg width="7" height="12" viewBox="0 0 7 12"><path d="M1 1l5 5-5 5" stroke={c} strokeWidth="1.8" fill="none" strokeLinecap="round"/></svg>,
+  dots:   (c=APP.text)     => <svg width="18" height="18" viewBox="0 0 18 18"><circle cx="4" cy="9" r="1.4" fill={c}/><circle cx="9" cy="9" r="1.4" fill={c}/><circle cx="14" cy="9" r="1.4" fill={c}/></svg>,
+  search: (c=APP.textMuted)=> <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" stroke={c} strokeWidth="1.6" fill="none"/><path d="M11 11l3.5 3.5" stroke={c} strokeWidth="1.6" strokeLinecap="round"/></svg>,
+  bolt:   (c='#fff')       => <svg width="12" height="14" viewBox="0 0 12 14"><path d="M7 1L1 8h4l-1 5 6-7H6l1-5z" fill={c}/></svg>,
+  plus:   (c=APP.text)     => <svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 1v10M1 6h10" stroke={c} strokeWidth="1.6" strokeLinecap="round"/></svg>,
+}
 
-  const config = {
-    brightness: 80,
-    animation_pack: 'confetti',
-    favorite_team: 'LAL',
-    favorite_player: 'LeBron James',
-    accent_color: '#FDB927',
-    show_shot_clock: true,
-    show_ticker: true,
-    auto_follow: true,
-    clock_color: '#ff5500',
-    active_mode: 'sport_live', // 'sport_live' | 'clock' | 'idle'
-  }
+// ─── Primitives ─────────────────────────────────────────────────────
+function BigButton({ children, onClick, variant='primary', disabled=false, icon, style={} }) {
+  const v = {
+    primary: { background: APP.accent, color: '#0B0C10' },
+    ghost:   { background: 'rgba(255,255,255,0.07)', color: APP.text },
+    outline: { background: 'transparent', color: APP.text, border: `1px solid ${APP.lineBold}` },
+  }[variant]
+  return (
+    <button onClick={onClick} disabled={disabled} style={{
+      width: '100%', height: 54, borderRadius: 14, border: 'none',
+      fontSize: 16, fontWeight: 700, letterSpacing: -0.1, fontFamily: TYPE.sans,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+      cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1,
+      transition: 'transform 120ms', ...v, ...style,
+    }}>{icon}{children}</button>
+  )
+}
 
-  // ─── Clock on status bar ──────────────────────────────────
-  function updateClock() {
-    const d = new Date()
-    document.getElementById('clock-time').textContent =
-      d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0')
-  }
-  updateClock(); setInterval(updateClock, 30000)
+function AppHeader({ title, sub, onBack, right }) {
+  return (
+    <div style={{ padding: '4px 20px 14px', display: 'flex', alignItems: 'flex-end', gap: 12 }}>
+      {onBack && (
+        <button onClick={onBack} style={{
+          width: 34, height: 34, borderRadius: 17, border: `1px solid ${APP.line}`,
+          background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          marginRight: -2, cursor: 'pointer',
+        }}>{Icon.back()}</button>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {sub && <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 2, color: APP.accent, textTransform: 'uppercase', marginBottom: 6 }}>{sub}</div>}
+        <div style={{ fontSize: 30, fontWeight: 700, color: APP.text, letterSpacing: -0.8, lineHeight: 1, fontFamily: TYPE.sans }}>{title}</div>
+      </div>
+      {right}
+    </div>
+  )
+}
 
-  // ─── Toast ─────────────────────────────────────────────────
-  const toast = document.getElementById('toast')
-  let toastTimer
-  function showToast(msg, type = 'default') {
-    toast.textContent = msg
-    toast.className = 'toast show ' + type
-    clearTimeout(toastTimer)
-    toastTimer = setTimeout(() => toast.className = 'toast', 1800)
-  }
+function LiveChip({ color = APP.accent, children }) {
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      padding: '3px 7px', borderRadius: 5,
+      background: `${color}20`, color,
+      fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase',
+    }}>
+      <div style={{ width: 5, height: 5, borderRadius: 3, background: color, animation: 'blink 1.2s ease infinite' }} />
+      {children}
+    </div>
+  )
+}
 
-  // ─── Server communication ─────────────────────────────────
-  let ws = null
-  let wsConnected = false
+function Pill({ children, color = APP.accent2, bg }) {
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '3px 7px', borderRadius: 5,
+      background: bg || `${color}20`, color,
+      fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase',
+    }}>{children}</div>
+  )
+}
 
-  function connectWS() {
-    try {
-      ws = new WebSocket(WS_URL)
-      ws.onopen = () => {
-        wsConnected = true
-        document.getElementById('server-status').textContent = '● connected'
-        document.getElementById('server-status').style.color = 'var(--success)'
-      }
-      ws.onclose = () => {
-        wsConnected = false
-        document.getElementById('server-status').textContent = '○ offline'
-        document.getElementById('server-status').style.color = 'var(--text-3)'
-        setTimeout(connectWS, 3000)
-      }
-      ws.onerror = () => { /* fall through to onclose */ }
-      ws.onmessage = (e) => {
-        const msg = JSON.parse(e.data)
-        if (msg.type === 'CONFIG_FULL') {
-          Object.assign(config, msg.data || {})
-          applyConfigToUI()
-        }
-      }
-    } catch (err) {
-      document.getElementById('server-status').textContent = '○ offline'
-      setTimeout(connectWS, 3000)
-    }
-  }
-  connectWS()
+function Toggle({ on, onChange }) {
+  return (
+    <div onClick={() => onChange(!on)} style={{
+      width: 40, height: 24, borderRadius: 12, background: on ? APP.accent : 'rgba(255,255,255,0.12)',
+      position: 'relative', transition: 'background 180ms', cursor: 'pointer', flexShrink: 0,
+    }}>
+      <div style={{
+        position: 'absolute', top: 2, left: on ? 18 : 2, width: 20, height: 20, borderRadius: 10,
+        background: '#fff', transition: 'left 180ms', boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+      }} />
+    </div>
+  )
+}
 
-  async function patchConfig(changes) {
-    document.getElementById('last-sync').textContent = 'syncing...'
-    try {
-      const res = await fetch(`${SERVER}/api/device/${DEVICE_UID}/config`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(changes),
-      })
-      const json = await res.json()
-      document.getElementById('last-sync').textContent = 'just now'
-      showToast(`Synced · ${Object.keys(changes).join(', ')}`, 'success')
-    } catch (err) {
-      showToast('Server offline — using local preview', 'error')
-      document.getElementById('last-sync').textContent = 'offline'
-    }
-  }
+function SectionHead({ children, action, onAction }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: APP.textMuted, textTransform: 'uppercase', letterSpacing: 1.5 }}>{children}</div>
+      <div style={{ flex: 1, height: 1, background: APP.line, marginLeft: 10 }} />
+      {action && <div onClick={onAction} style={{ fontSize: 11, color: APP.accent2, fontWeight: 600, marginLeft: 10, cursor: 'pointer' }}>{action}</div>}
+    </div>
+  )
+}
 
-  // Trigger test event via server REST → server broadcasts to all boards
-  async function fireTrigger(reason) {
-    try {
-      const res = await fetch(`${SERVER}/api/device/${DEVICE_UID}/trigger`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reason,
-          team: 'home',
-          accent_color: config.accent_color,
-        }),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      showToast(`Fired ${reason}`, 'success')
-    } catch (err) {
-      showToast(`Trigger failed — ${err.message}`, 'error')
-    }
-  }
+function SettingRow({ label, value, right, first }) {
+  return (
+    <div style={{
+      padding: '13px 14px', display: 'flex', alignItems: 'center', gap: 12,
+      borderTop: !first ? `1px solid ${APP.line}` : 'none',
+    }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 14, fontWeight: 500 }}>{label}</div>
+        {value && <div style={{ fontSize: 11, color: APP.textMuted, marginTop: 2 }}>{value}</div>}
+      </div>
+      {right}
+    </div>
+  )
+}
 
-  // ─── Apply config to UI (when loaded from server) ─────────
-  function applyConfigToUI() {
-    document.getElementById('brightness').value = config.brightness
-    document.getElementById('brightness-val').textContent = config.brightness
+// ─── Bottom tab bar ────────────────────────────────────────────────
+function BottomTabs({ active, onSelect }) {
+  const tabs = [
+    { id: 'live',    label: 'Live',    svg: <svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="3" fill="currentColor"/><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.4" fill="none"/></svg> },
+    { id: 'games',   label: 'Games',   svg: <svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9" stroke="currentColor" strokeWidth="1.4" fill="none"/><path d="M11 2c2.5 2.5 2.5 14.5 0 18M11 2c-2.5 2.5-2.5 14.5 0 18M2 11h18" stroke="currentColor" strokeWidth="1.2" fill="none"/></svg> },
+    { id: 'market',  label: 'Market',  svg: <svg width="22" height="22" viewBox="0 0 22 22"><path d="M4 7h14l-1.5 10h-11L4 7z" stroke="currentColor" strokeWidth="1.4" fill="none"/><path d="M7 7V5a4 4 0 018 0v2" stroke="currentColor" strokeWidth="1.4" fill="none"/></svg> },
+    { id: 'fun',     label: 'Fun',     svg: <svg width="22" height="22" viewBox="0 0 22 22"><rect x="3" y="6" width="16" height="11" rx="2" stroke="currentColor" strokeWidth="1.4" fill="none"/><path d="M7 10v3M5.5 11.5h3M13 11h0M15 11h0M14 13h0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg> },
+    { id: 'display', label: 'Display', svg: <svg width="22" height="22" viewBox="0 0 22 22"><rect x="3" y="4" width="16" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.4" fill="none"/><path d="M8 19h6M11 16v3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg> },
+  ]
+  return (
+    <div style={{
+      display: 'flex', padding: '10px 12px calc(10px + env(safe-area-inset-bottom,0px))', gap: 2,
+      background: 'rgba(8,9,13,0.85)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+      borderTop: `1px solid ${APP.line}`, position: 'sticky', bottom: 0, zIndex: 10,
+    }}>
+      {tabs.map(t => {
+        const on = t.id === active
+        return (
+          <button key={t.id} onClick={() => onSelect(t.id)} style={{
+            flex: 1, padding: '8px 0', border: 'none', background: 'transparent',
+            color: on ? APP.accent : APP.textDim, cursor: 'pointer',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+            fontFamily: TYPE.sans, transition: 'color 160ms',
+          }}>
+            {t.svg}
+            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0.3 }}>{t.label}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
-    document.querySelectorAll('[data-anim]').forEach(el => {
-      el.classList.toggle('active', el.dataset.anim === config.animation_pack)
-    })
-    document.querySelectorAll('[data-team]').forEach(el => {
-      el.classList.toggle('active', el.dataset.team === config.favorite_team)
-    })
-    document.querySelectorAll('[data-player]').forEach(el => {
-      el.classList.toggle('active', el.dataset.player === config.favorite_player)
-    })
-    document.querySelectorAll('[data-toggle]').forEach(el => {
-      el.classList.toggle('on', !!config[el.dataset.toggle])
-    })
-    document.querySelectorAll('[data-color]').forEach(el => {
-      el.classList.toggle('active', el.dataset.color === config.clock_color)
-    })
-    document.querySelectorAll('[data-accent]').forEach(el => {
-      el.classList.toggle('active', el.dataset.accent === config.accent_color)
-    })
-    document.querySelectorAll('[data-mode]').forEach(el => {
-      el.classList.toggle('active', el.dataset.mode === config.active_mode)
-    })
-  }
-
-  // ─── Wiring: Tabs ──────────────────────────────────────────
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'))
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'))
-      tab.classList.add('active')
-      document.querySelector(`[data-panel="${tab.dataset.tab}"]`).classList.add('active')
-    })
-  })
-
-  // ─── Wiring: Brightness ────────────────────────────────────
-  const brightnessEl = document.getElementById('brightness')
-  const brightnessVal = document.getElementById('brightness-val')
-  let brightnessTimer
-  brightnessEl.addEventListener('input', () => {
-    const v = parseInt(brightnessEl.value)
-    brightnessVal.textContent = v
-    config.brightness = v
-    clearTimeout(brightnessTimer)
-    brightnessTimer = setTimeout(() => patchConfig({ brightness: v }), 200)
-  })
-
-  // ─── Wiring: Animation pack ────────────────────────────────
-  document.querySelectorAll('[data-anim]').forEach(el => {
-    el.addEventListener('click', () => {
-      document.querySelectorAll('[data-anim]').forEach(x => x.classList.remove('active'))
-      el.classList.add('active')
-      config.animation_pack = el.dataset.anim
-      patchConfig({ animation_pack: el.dataset.anim })
-    })
-  })
-
-  // ─── Wiring: Toggles ──────────────────────────────────────
-  document.querySelectorAll('[data-toggle]').forEach(el => {
-    el.addEventListener('click', () => {
-      el.classList.toggle('on')
-      const key = el.dataset.toggle
-      const val = el.classList.contains('on')
-      config[key] = val
-      patchConfig({ [key]: val })
-    })
-  })
-
-  // ─── Wiring: Team picker ──────────────────────────────────
-  document.querySelectorAll('[data-team]').forEach(el => {
-    el.addEventListener('click', () => {
-      document.querySelectorAll('[data-team]').forEach(x => x.classList.remove('active'))
-      el.classList.add('active')
-      config.favorite_team = el.dataset.team
-      patchConfig({ favorite_team: el.dataset.team })
-    })
-  })
-
-  // ─── Wiring: Player picker ─────────────────────────────────
-  document.querySelectorAll('[data-player]').forEach(el => {
-    el.addEventListener('click', () => {
-      document.querySelectorAll('[data-player]').forEach(x => x.classList.remove('active'))
-      el.classList.add('active')
-      config.favorite_player = el.dataset.player
-      document.getElementById('player-input').value = el.dataset.player
-      patchConfig({ favorite_player: el.dataset.player })
-    })
-  })
-  document.getElementById('player-input').addEventListener('change', (e) => {
-    config.favorite_player = e.target.value
-    patchConfig({ favorite_player: e.target.value })
-  })
-
-  // ─── Wiring: Color swatches ───────────────────────────────
-  document.querySelectorAll('[data-color]').forEach(el => {
-    el.addEventListener('click', () => {
-      document.querySelectorAll('[data-color]').forEach(x => x.classList.remove('active'))
-      el.classList.add('active')
-      config.clock_color = el.dataset.color
-      patchConfig({ clock_color: el.dataset.color })
-    })
-  })
-  document.querySelectorAll('[data-accent]').forEach(el => {
-    el.addEventListener('click', () => {
-      document.querySelectorAll('[data-accent]').forEach(x => x.classList.remove('active'))
-      el.classList.add('active')
-      config.accent_color = el.dataset.accent
-      patchConfig({ accent_color: el.dataset.accent })
-    })
-  })
-
-  // ─── Wiring: Mode picker (Sprint 1) ───────────────────────
-  document.querySelectorAll('[data-mode]').forEach(el => {
-    el.addEventListener('click', () => {
-      document.querySelectorAll('[data-mode]').forEach(x => x.classList.remove('active'))
-      el.classList.add('active')
-      config.active_mode = el.dataset.mode
-      patchConfig({ active_mode: el.dataset.mode })
-    })
-  })
-
-  // ─── Wiring: Test triggers ────────────────────────────────
-  document.querySelectorAll('[data-trigger]').forEach(el => {
-    el.addEventListener('click', () => fireTrigger(el.dataset.trigger))
-  })
-
-  // ─── Games list (Game tab) ─────────────────────────────────
-  let activeGameId = null
-
-  async function loadGames() {
-    try {
-      const res = await fetch(`${SERVER}/api/games`)
-      const data = await res.json()
-      renderGames(data)
-    } catch (err) {
-      document.getElementById('games-list').innerHTML =
-        '<div style="font-size:12px;color:var(--live);text-align:center;padding:12px 0">Server offline</div>'
-    }
-  }
-
-  function renderGames(data) {
-    const list = document.getElementById('games-list')
-    const updated = document.getElementById('games-updated')
-
-    if (data.mock_active) {
-      updated.textContent = '· mock fallback'
-    } else {
-      const secs = Math.floor((Date.now() - data.updated_at) / 1000)
-      updated.textContent = `· updated ${secs}s ago`
-    }
-
-    const games = data.games || []
-
-    if (data.mock_active || games.length === 0) {
-      // Show the mock game as a selectable item
-      list.innerHTML = `
-        <div class="game-item" data-game-id="mock-game-001" style="cursor:pointer">
-          <div>
-            <div class="game-teams">
-              <span class="game-live">MOCK</span>LAL @ WAS
-            </div>
-            <div style="font-size:10px;color:var(--text-3);margin-top:2px">Demo game — no live NBA right now</div>
-          </div>
-          <div class="game-score">—</div>
+function DeviceTopBar({ onOpenSettings, boardName = 'Living Room', wsStatus = 'connected' }) {
+  const ok = wsStatus === 'connected'
+  return (
+    <div style={{ padding: '6px 20px 10px', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ width: 32, height: 32, borderRadius: 9, background: `linear-gradient(135deg, ${APP.accent} 0%, ${APP.danger} 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 12px rgba(255,106,26,0.3)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 3px)', gap: 1 }}>
+          {[1,0,1,1,1,1,0,1,0,1,1,1].map((v,i) => <div key={i} style={{ width:3, height:3, borderRadius:1, background: v ? '#fff' : 'rgba(255,255,255,0.2)' }} />)}
         </div>
-      `
-    } else {
-      // sort: live > upcoming > final
-      const sorted = [...games].sort((a, b) => {
-        const rank = g => g.is_live ? 0 : g.is_final ? 2 : 1
-        return rank(a) - rank(b)
-      })
-      list.innerHTML = sorted.map(g => {
-        const badge = g.is_live
-          ? '<span class="game-live">LIVE</span>'
-          : g.is_final
-            ? '<span class="game-live" style="background:var(--text-3)">FINAL</span>'
-            : ''
-        const score = (g.away_score + g.home_score) > 0
-          ? `${g.away_score}–${g.home_score}`
-          : '—'
-        const isActive = g.id === activeGameId ? 'active' : ''
-        return `
-          <div class="game-item ${isActive}" data-game-id="${g.id}" style="cursor:pointer">
-            <div>
-              <div class="game-teams">
-                ${badge}${g.away_team} @ ${g.home_team}
-              </div>
-              <div style="font-size:10px;color:var(--text-3);margin-top:2px">${g.status_detail || ''}</div>
-            </div>
-            <div class="game-score">${score}</div>
-          </div>
-        `
-      }).join('')
-    }
+      </div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: APP.textMuted, textTransform: 'uppercase' }}>{boardName}</div>
+        <div style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
+          ArenaBoard 128
+          <div style={{ width: 5, height: 5, borderRadius: 3, background: ok ? APP.good : APP.danger, boxShadow: ok ? `0 0 5px ${APP.good}` : 'none' }} />
+        </div>
+      </div>
+      <button onClick={onOpenSettings} style={{ width: 32, height: 32, borderRadius: 9, background: 'rgba(255,255,255,0.05)', border: `1px solid ${APP.line}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>{Icon.dots()}</button>
+    </div>
+  )
+}
 
-    // wire click handlers
-    list.querySelectorAll('[data-game-id]').forEach(el => {
-      el.addEventListener('click', () => selectGame(el.dataset.gameId))
-    })
+// ─── Toast (lightweight) ────────────────────────────────────────────
+function useToast() {
+  const [t, setT] = React.useState(null)
+  const show = (msg, kind='default') => {
+    setT({ msg, kind })
+    setTimeout(() => setT(null), 1800)
   }
+  const node = t ? (
+    <div style={{
+      position: 'fixed', bottom: 86, left: '50%', transform: 'translateX(-50%)',
+      background: t.kind === 'error' ? APP.danger : t.kind === 'success' ? APP.good : APP.cardElev,
+      color: t.kind === 'success' || t.kind === 'error' ? '#000' : APP.text,
+      padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+      boxShadow: '0 8px 30px rgba(0,0,0,0.5)', zIndex: 100, animation: 'fade-in 220ms ease-out',
+    }}>{t.msg}</div>
+  ) : null
+  return [node, show]
+}
 
-  async function selectGame(gameId) {
+// ─── Backend wiring ─────────────────────────────────────────────────
+const DEVICE_UID = 'demo-device-001'
+const CFG = window.ARENABOARD_CONFIG || { SERVER: 'http://localhost:3001', WS_PROTOCOL: 'ws' }
+const SERVER = CFG.SERVER
+const WS_URL = `${CFG.WS_PROTOCOL}://${CFG.SERVER.replace(/^https?:\/\//, '')}/?uid=${DEVICE_UID}&role=pwa`
+
+function useBackend() {
+  const [config, setConfig] = React.useState({
+    brightness: 80, animation_pack: 'confetti',
+    favorite_team: 'LAL', favorite_player: 'LeBron James',
+    accent_color: '#FDB927',
+    show_shot_clock: true, show_ticker: true, auto_follow: true,
+    clock_color: '#ff5500', active_mode: 'sport_live',
+    night_mode: false, auto_dim: false, orientation: 'landscape', board_res: '128x64',
+  })
+  const [games, setGames] = React.useState([])
+  const [gamesUpdatedAt, setGamesUpdatedAt] = React.useState(0)
+  const [mockActive, setMockActive] = React.useState(false)
+  const [selectedGame, setSelectedGame] = React.useState(null)
+  const [gameLive, setGameLive] = React.useState({ status: null, home_team: null, away_team: null, home_score: 0, away_score: 0, period: 1, clock: '12:00' })
+  const [wsStatus, setWsStatus] = React.useState('connecting')
+  const [momentActive, setMomentActive] = React.useState(0)
+  const [toastNode, showToast] = useToast()
+
+  const patchConfig = React.useCallback(async (changes) => {
+    setConfig(c => ({ ...c, ...changes }))
     try {
-      const res = await fetch(`${SERVER}/api/device/${DEVICE_UID}/active-game`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ game_id: gameId }),
+      await fetch(`${SERVER}/api/device/${DEVICE_UID}/config`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes),
       })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      activeGameId = gameId
-      showToast('Now playing this game', 'success')
-      // visual update
-      document.querySelectorAll('[data-game-id]').forEach(el => {
-        el.classList.toggle('active', el.dataset.gameId === gameId)
+      showToast(`Synced · ${Object.keys(changes).join(', ')}`, 'success')
+    } catch (e) { showToast('Server offline · local preview', 'error') }
+  }, [showToast])
+
+  const fireTrigger = React.useCallback(async (reason='DUNK') => {
+    setMomentActive(20)
+    setTimeout(() => setMomentActive(0), 800)
+    try {
+      const r = await fetch(`${SERVER}/api/device/${DEVICE_UID}/trigger`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason, team: 'home', accent_color: config.accent_color }),
       })
-    } catch (err) {
-      showToast(`Failed — ${err.message}`, 'error')
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      showToast(`Fired ${reason}`, 'success')
+    } catch (e) { showToast(`Trigger failed`, 'error') }
+  }, [config.accent_color, showToast])
+
+  const selectGame = React.useCallback(async (gameId) => {
+    setSelectedGame(gameId)
+    try {
+      await fetch(`${SERVER}/api/device/${DEVICE_UID}/active-game`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game_id: gameId }),
+      })
+      showToast('Now on board', 'success')
+    } catch (e) { showToast('Select failed', 'error') }
+  }, [showToast])
+
+  const loadGames = React.useCallback(async () => {
+    try {
+      const r = await fetch(`${SERVER}/api/games`)
+      const data = await r.json()
+      setGames(data.games || [])
+      setGamesUpdatedAt(data.updated_at || Date.now())
+      setMockActive(!!data.mock_active)
+    } catch (e) { /* offline */ }
+  }, [])
+
+  React.useEffect(() => {
+    fetch(`${SERVER}/api/device/${DEVICE_UID}/config`)
+      .then(r => r.json())
+      .then(data => { if (data.settings) setConfig(c => ({ ...c, ...data.settings })) })
+      .catch(() => {})
+    loadGames()
+    const id = setInterval(loadGames, 10000)
+    let ws, retryT
+    const connect = () => {
+      try {
+        ws = new WebSocket(WS_URL)
+        ws.onopen = () => setWsStatus('connected')
+        ws.onclose = () => { setWsStatus('offline'); retryT = setTimeout(connect, 3000) }
+        ws.onerror = () => {}
+        ws.onmessage = (e) => {
+          const msg = JSON.parse(e.data)
+          if (msg.type === 'CONFIG_UPDATE' || msg.type === 'CONFIG_FULL') {
+            setConfig(c => ({ ...c, ...(msg.data||{}) }))
+          } else if (msg.type === 'FULL_STATE') {
+            setGameLive(g => ({ ...g, ...msg.data }))
+          } else if (msg.type === 'SCORE_UPDATE') {
+            setGameLive(g => ({ ...g, ...msg.data }))
+          } else if (msg.type === 'NO_GAMES') {
+            setGameLive({ status: null, home_team: null, away_team: null, home_score: 0, away_score: 0, period: 1, clock: '12:00' })
+          } else if (msg.type === 'SCORE_EVENT') {
+            setMomentActive(20); setTimeout(() => setMomentActive(0), 800)
+          }
+        }
+      } catch (e) { retryT = setTimeout(connect, 3000) }
     }
+    connect()
+    return () => { clearInterval(id); clearTimeout(retryT); if (ws) ws.close() }
+  }, [loadGames])
+
+  return {
+    config, patchConfig, fireTrigger,
+    games, gamesUpdatedAt, mockActive,
+    selectedGame, selectGame,
+    gameLive, wsStatus, momentActive,
+    toastNode,
   }
+}
 
-  loadGames()
-  setInterval(loadGames, 10000)
+// ─── Helpers ────────────────────────────────────────────────────────
+function statusLabel(g) {
+  if (!g) return 'NO GAME'
+  const s = g.status || ''
+  if (s.includes('IN_PROGRESS')) return `Q${g.period} · ${g.clock}`
+  if (s.includes('HALFTIME')) return 'HALFTIME'
+  if (s.includes('FINAL')) return 'FINAL'
+  if (s.includes('SCHEDULED') || s.includes('PRE')) return g.status_detail || 'SCHEDULED'
+  if (s.includes('END_PERIOD')) return `END Q${g.period}`
+  return s.replace('STATUS_', '').replace(/_/g, ' ')
+}
+function isLive(g) { return g && g.status && g.status.includes('IN_PROGRESS') }
+function isFinal(g) { return g && g.status && g.status.includes('FINAL') }
 
-  // ─── Initial config load from server ──────────────────────
-  fetch(`${SERVER}/api/device/${DEVICE_UID}/config`)
-    .then(r => r.json())
-    .then(data => {
-      if (data.config) {
-        Object.assign(config, data.config)
-        applyConfigToUI()
-      }
-    })
-    .catch(() => { /* server not running yet — UI reflects defaults */ })
+const TEAM_COLORS = {
+  LAL:'#FDB927', GSW:'#FFC72C', BOS:'#007A33', MIA:'#F9A01B',
+  NYK:'#F58426', CHI:'#CE1141', PHI:'#006BB6', MIL:'#00471B',
+  DEN:'#0E2240', PHX:'#E56020', DAL:'#0053BC', LAC:'#C8102E',
+  ATL:'#E03A3E', BKN:'#000000', CHA:'#1D1160', CLE:'#860038',
+  DET:'#1D42BA', HOU:'#CE1141', IND:'#FDBB30', MEM:'#5D76A9',
+  MIN:'#236192', NOP:'#0C2340', OKC:'#007AC1', ORL:'#0077C0',
+  POR:'#E03A3E', SAC:'#5A2D81', SAS:'#C4CED4', TOR:'#CE1141',
+  UTA:'#002B5C', WAS:'#002B5C',
+}
+const teamTint = (abbr) => TEAM_COLORS[abbr] || APP.accent
+
+// ─── LIVE screen ────────────────────────────────────────────────────
+function LiveScreen({ backend }) {
+  const { gameLive, momentActive, fireTrigger, wsStatus, selectedGame, games } = backend
+  const live = isLive(gameLive)
+  const hasGame = !!gameLive.home_team
+  const homeTint = teamTint(gameLive.home_team)
+  const awayTint = teamTint(gameLive.away_team)
+  const lead = (gameLive.home_score || 0) - (gameLive.away_score || 0)
+  const total = (gameLive.home_score || 0) + (gameLive.away_score || 0)
+  const homePct = total > 0 ? Math.round(((gameLive.home_score || 0) / total) * 100) : 50
+
+  return (
+    <div className="screen-fade" style={{ padding: '0 16px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Status strip */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {live ? <LiveChip>LIVE</LiveChip> : isFinal(gameLive) ? <Pill color={APP.textMuted}>FINAL</Pill> : <Pill color={APP.accent2}>{statusLabel(gameLive)}</Pill>}
+        <div style={{ flex: 1, fontSize: 11, color: APP.textMuted, fontFamily: TYPE.mono }}>
+          {wsStatus === 'connected' ? 'MIRRORING TO BOARD' : 'BOARD OFFLINE'}
+        </div>
+        {momentActive > 0 && <Pill color={APP.gold} bg={`${APP.gold}30`}>MOMENT</Pill>}
+      </div>
+
+      {/* Scoreboard */}
+      <div style={{
+        position: 'relative', borderRadius: 24, overflow: 'hidden',
+        background: hasGame
+          ? `linear-gradient(135deg, ${homeTint}20 0%, ${APP.card} 50%, ${awayTint}20 100%)`
+          : APP.card,
+        border: `1px solid ${APP.lineBold}`,
+        padding: '22px 18px',
+      }}>
+        {hasGame ? (
+          <React.Fragment>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <TeamBlock abbr={gameLive.home_team} score={gameLive.home_score} tint={homeTint} side="HOME" />
+              <div style={{ textAlign: 'center', paddingTop: 18 }}>
+                <div style={{ fontSize: 11, color: APP.textMuted, letterSpacing: 1.5, fontFamily: TYPE.mono, marginBottom: 4 }}>{statusLabel(gameLive)}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: lead === 0 ? APP.text : lead > 0 ? homeTint : awayTint, fontFamily: TYPE.display, fontStyle: 'italic' }}>
+                  {lead === 0 ? 'TIED' : `${lead > 0 ? '+' : ''}${lead}`}
+                </div>
+              </div>
+              <TeamBlock abbr={gameLive.away_team} score={gameLive.away_score} tint={awayTint} side="AWAY" align="right" />
+            </div>
+            {/* Momentum bar */}
+            <div style={{ marginTop: 18, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)', overflow: 'hidden', display: 'flex' }}>
+              <div style={{ width: `${homePct}%`, background: homeTint, transition: 'width 600ms ease' }} />
+              <div style={{ flex: 1, background: awayTint }} />
+            </div>
+          </React.Fragment>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '30px 0' }}>
+            <div style={{ fontSize: 40, fontFamily: TYPE.display, color: APP.textMuted, fontStyle: 'italic' }}>—</div>
+            <div style={{ marginTop: 8, fontSize: 12, color: APP.textMuted, letterSpacing: 1.5, fontFamily: TYPE.mono, textTransform: 'uppercase' }}>
+              {games.length === 0 ? 'No games today' : 'Pick a game to mirror'}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Triggers */}
+      <div>
+        <SectionHead>Quick triggers</SectionHead>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          <TriggerBtn onClick={() => fireTrigger('DUNK')} label="Dunk" tint={APP.accent} />
+          <TriggerBtn onClick={() => fireTrigger('THREE')} label="Three" tint={APP.accent2} />
+          <TriggerBtn onClick={() => fireTrigger('BUZZER')} label="Buzzer" tint={APP.gold} />
+        </div>
+      </div>
+
+      {/* Active game indicator */}
+      <div style={{ padding: '12px 14px', borderRadius: 12, background: APP.card, border: `1px solid ${APP.line}`, fontSize: 12, color: APP.textMuted, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 8, height: 8, borderRadius: 4, background: selectedGame ? APP.good : APP.textDim }} />
+        <span style={{ flex: 1 }}>{selectedGame ? `Locked to game ${selectedGame.slice(-6)}` : 'Auto-follow today’s top game'}</span>
+        <span style={{ fontFamily: TYPE.mono, fontSize: 10, letterSpacing: 1 }}>{wsStatus.toUpperCase()}</span>
+      </div>
+    </div>
+  )
+}
+
+function TeamBlock({ abbr, score, tint, side, align = 'left' }) {
+  return (
+    <div style={{ flex: 1, textAlign: align, minWidth: 0 }}>
+      <div style={{ fontSize: 9, fontWeight: 800, color: APP.textMuted, letterSpacing: 2, fontFamily: TYPE.mono }}>{side}</div>
+      <div style={{
+        fontSize: 28, fontWeight: 900, color: tint, letterSpacing: -0.5, marginTop: 2,
+        textShadow: `0 0 22px ${tint}40`,
+      }}>{abbr || '—'}</div>
+      <div style={{ fontSize: 64, fontWeight: 900, color: APP.text, fontFamily: TYPE.display, lineHeight: 1, marginTop: 4, letterSpacing: -2 }}>
+        {score ?? 0}
+      </div>
+    </div>
+  )
+}
+
+function TriggerBtn({ onClick, label, tint }) {
+  return (
+    <button onClick={onClick} style={{
+      padding: '14px 8px', borderRadius: 14, border: `1px solid ${tint}40`,
+      background: `${tint}15`, color: tint,
+      fontSize: 13, fontWeight: 700, letterSpacing: 0.3, fontFamily: TYPE.sans,
+      cursor: 'pointer', transition: 'all 140ms',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+    }}>
+      {Icon.bolt(tint)}
+      {label}
+    </button>
+  )
+}
+
+// ─── GAMES screen ──────────────────────────────────────────────────
+function GamesScreen({ backend }) {
+  const { games, selectedGame, selectGame, gamesUpdatedAt, mockActive } = backend
+  const [filter, setFilter] = React.useState('all')
+  const [now, setNow] = React.useState(Date.now())
+  React.useEffect(() => { const id = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(id) }, [])
+  const sec = Math.max(0, Math.round((now - gamesUpdatedAt) / 1000))
+
+  const filtered = games.filter(g => {
+    if (filter === 'live') return isLive(g)
+    if (filter === 'final') return isFinal(g)
+    return true
+  })
+
+  return (
+    <div className="screen-fade" style={{ padding: '0 16px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        {['all','live','final'].map(f => (
+          <button key={f} onClick={() => setFilter(f)} style={{
+            padding: '7px 14px', borderRadius: 999, border: 'none',
+            background: filter === f ? APP.text : 'rgba(255,255,255,0.05)',
+            color: filter === f ? '#000' : APP.textMuted,
+            fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase',
+            cursor: 'pointer', fontFamily: TYPE.sans,
+          }}>{f}</button>
+        ))}
+        <div style={{ flex: 1 }} />
+        <div style={{ fontSize: 10, color: APP.textDim, fontFamily: TYPE.mono, letterSpacing: 1 }}>
+          {mockActive ? 'MOCK · ' : ''}{sec}s ago
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8, color: APP.textMuted }}>
+          <div style={{ fontSize: 14, fontFamily: TYPE.display, fontStyle: 'italic' }}>No games match.</div>
+          <div style={{ fontSize: 11, letterSpacing: 1, fontFamily: TYPE.mono }}>SCHEDULE LOADS HOURLY</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {filtered.map(g => {
+            const live = isLive(g)
+            const sel = selectedGame === g.id
+            const homeT = teamTint(g.home_team), awayT = teamTint(g.away_team)
+            return (
+              <button key={g.id} onClick={() => selectGame(g.id)} style={{
+                textAlign: 'left', padding: '14px 14px', borderRadius: 14,
+                background: sel ? `linear-gradient(90deg, ${APP.accent}25, ${APP.card})` : APP.card,
+                border: sel ? `1px solid ${APP.accent}` : `1px solid ${APP.line}`,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, fontFamily: TYPE.sans,
+                color: APP.text,
+              }}>
+                <div style={{ minWidth: 56 }}>
+                  {live ? <LiveChip>LIVE</LiveChip> : isFinal(g) ? <Pill color={APP.textMuted}>FINAL</Pill> : <Pill color={APP.accent2}>SCHED</Pill>}
+                </div>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <TeamLine abbr={g.away_team} score={g.away_score} tint={awayT} winner={g.away_score > g.home_score && isFinal(g)} />
+                  <div style={{ fontSize: 10, color: APP.textDim, fontFamily: TYPE.mono }}>@</div>
+                  <TeamLine abbr={g.home_team} score={g.home_score} tint={homeT} winner={g.home_score > g.away_score && isFinal(g)} />
+                </div>
+                <div style={{ minWidth: 60, textAlign: 'right' }}>
+                  <div style={{ fontSize: 11, color: APP.textMuted, fontFamily: TYPE.mono }}>{statusLabel(g)}</div>
+                  {sel && <div style={{ fontSize: 9, color: APP.accent, fontWeight: 800, letterSpacing: 1.5, marginTop: 3 }}>ON BOARD</div>}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TeamLine({ abbr, score, tint, winner }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: tint, letterSpacing: -0.2 }}>{abbr}</div>
+      <div style={{ fontSize: 17, fontWeight: 800, color: winner ? APP.text : APP.textMuted, fontFamily: TYPE.display, lineHeight: 1 }}>{score ?? 0}</div>
+    </div>
+  )
+}
+
+// ─── DISPLAY screen ─────────────────────────────────────────────────
+function DisplayScreen({ backend }) {
+  const { config, patchConfig } = backend
+  const accents = ['#FF6A1A','#4DE8D4','#FDB927','#5090FF','#FF3B3B','#3FDC68','#A569FF','#FFFFFF']
+  const packs = [
+    { id: 'confetti', label: 'Confetti' },
+    { id: 'fireworks', label: 'Fireworks' },
+    { id: 'lightning', label: 'Lightning' },
+    { id: 'pulse', label: 'Pulse' },
+  ]
+  const modes = [
+    { id: 'sport_live', label: 'Game' },
+    { id: 'clock', label: 'Clock' },
+    { id: 'standby', label: 'Standby' },
+  ]
+
+  return (
+    <div className="screen-fade" style={{ padding: '0 16px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {/* Brightness */}
+      <div>
+        <SectionHead>Brightness</SectionHead>
+        <div style={{ background: APP.card, borderRadius: 14, padding: '16px 14px', border: `1px solid ${APP.line}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ fontSize: 11, color: APP.textDim, fontFamily: TYPE.mono, width: 24 }}>{Math.round(config.brightness)}</div>
+            <input type="range" min={0} max={100} value={config.brightness}
+              onChange={(e) => patchConfig({ brightness: Number(e.target.value) })}
+              style={{ flex: 1 }} />
+            <div style={{ fontSize: 11, color: APP.textDim, fontFamily: TYPE.mono }}>100</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Mode */}
+      <div>
+        <SectionHead>Mode</SectionHead>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {modes.map(m => {
+            const on = config.active_mode === m.id
+            return (
+              <button key={m.id} onClick={() => patchConfig({ active_mode: m.id })} style={{
+                flex: 1, padding: '12px 6px', borderRadius: 12, border: 'none',
+                background: on ? APP.text : APP.card,
+                color: on ? '#000' : APP.text, cursor: 'pointer',
+                fontSize: 13, fontWeight: 700, fontFamily: TYPE.sans, letterSpacing: 0.2,
+              }}>{m.label}</button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Accent */}
+      <div>
+        <SectionHead>Accent color</SectionHead>
+        <div style={{ background: APP.card, borderRadius: 14, padding: '14px', border: `1px solid ${APP.line}`, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {accents.map(c => {
+            const on = config.accent_color === c
+            return (
+              <button key={c} onClick={() => patchConfig({ accent_color: c })} style={{
+                width: 36, height: 36, borderRadius: 18, border: on ? `2px solid ${APP.text}` : `1px solid ${APP.line}`,
+                background: c, cursor: 'pointer', boxShadow: on ? `0 0 12px ${c}80` : 'none',
+              }} />
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Animation pack */}
+      <div>
+        <SectionHead>Celebration</SectionHead>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+          {packs.map(p => {
+            const on = config.animation_pack === p.id
+            return (
+              <button key={p.id} onClick={() => patchConfig({ animation_pack: p.id })} style={{
+                padding: '14px 12px', borderRadius: 12, border: on ? `1px solid ${APP.accent}` : `1px solid ${APP.line}`,
+                background: on ? `${APP.accent}18` : APP.card,
+                color: on ? APP.accent : APP.text,
+                cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: TYPE.sans, textAlign: 'left',
+              }}>{p.label}</button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Toggles */}
+      <div>
+        <SectionHead>Board behavior</SectionHead>
+        <div style={{ background: APP.card, borderRadius: 14, border: `1px solid ${APP.line}` }}>
+          <SettingRow first label="Show shot clock" right={<Toggle on={config.show_shot_clock} onChange={(v) => patchConfig({ show_shot_clock: v })} />} />
+          <SettingRow label="Show ticker" right={<Toggle on={config.show_ticker} onChange={(v) => patchConfig({ show_ticker: v })} />} />
+          <SettingRow label="Auto-follow top game" value="Switches when your favorite team plays" right={<Toggle on={config.auto_follow} onChange={(v) => patchConfig({ auto_follow: v })} />} />
+          <SettingRow label="Night mode" value="Dim + warmer at sunset" right={<Toggle on={config.night_mode} onChange={(v) => patchConfig({ night_mode: v })} />} />
+          <SettingRow label="Auto-dim ambient" right={<Toggle on={config.auto_dim} onChange={(v) => patchConfig({ auto_dim: v })} />} />
+        </div>
+      </div>
+
+      {/* Hardware */}
+      <div>
+        <SectionHead>Hardware</SectionHead>
+        <div style={{ background: APP.card, borderRadius: 14, border: `1px solid ${APP.line}` }}>
+          <SettingRow first label="Resolution" value={config.board_res} />
+          <SettingRow label="Orientation" value={config.orientation} right={
+            <button onClick={() => patchConfig({ orientation: config.orientation === 'landscape' ? 'portrait' : 'landscape' })} style={{
+              padding: '6px 12px', borderRadius: 8, border: `1px solid ${APP.line}`, background: 'transparent', color: APP.text,
+              fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: TYPE.sans,
+            }}>Flip</button>
+          } />
+          <SettingRow label="Device UID" value={DEVICE_UID} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Stub screens (preview) ─────────────────────────────────────────
+function PreviewScreen({ title, blurb }) {
+  return (
+    <div className="screen-fade" style={{ padding: '40px 24px', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 12 }}>
+      <Pill color={APP.gold} bg={`${APP.gold}25`}>PREVIEW</Pill>
+      <div style={{ fontSize: 32, fontFamily: TYPE.display, fontStyle: 'italic', color: APP.text, lineHeight: 1.1, marginTop: 4 }}>{title}</div>
+      <div style={{ fontSize: 13, color: APP.textMuted, lineHeight: 1.5, maxWidth: 280 }}>{blurb}</div>
+      <div style={{ marginTop: 8, fontSize: 10, letterSpacing: 1.8, color: APP.textDim, fontFamily: TYPE.mono }}>SHIPS IN A LATER SPRINT</div>
+    </div>
+  )
+}
+
+// ─── App root ───────────────────────────────────────────────────────
+function App() {
+  const backend = useBackend()
+  const [tab, setTab] = React.useState('live')
+
+  const titles = {
+    live:    { title: 'Live',    sub: 'NOW PLAYING' },
+    games:   { title: 'Games',   sub: 'TODAY' },
+    market:  { title: 'Market',  sub: 'COMING SOON' },
+    fun:     { title: 'Fun',     sub: 'COMING SOON' },
+    display: { title: 'Display', sub: 'BOARD SETTINGS' },
+  }
+  const t = titles[tab]
+
+  return (
+    <React.Fragment>
+      <DeviceTopBar onOpenSettings={() => setTab('display')} wsStatus={backend.wsStatus} />
+      <AppHeader title={t.title} sub={t.sub} />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+        {tab === 'live'    && <LiveScreen    backend={backend} />}
+        {tab === 'games'   && <GamesScreen   backend={backend} />}
+        {tab === 'display' && <DisplayScreen backend={backend} />}
+        {tab === 'market'  && <PreviewScreen title="Skin marketplace" blurb="Buy team skins, season packs, and signature animations from your favorite players. Backend purchase flow + content delivery ships next sprint." />}
+        {tab === 'fun'     && <PreviewScreen title="Buzzer trivia" blurb="Tap-to-answer multiplayer trivia that takes over the board between quarters. Real-time room state ships with the multiplayer sprint." />}
+      </div>
+      <BottomTabs active={tab} onSelect={setTab} />
+      {backend.toastNode}
+    </React.Fragment>
+  )
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'))
+root.render(<App />)
 </script>
 </body>
 </html>
