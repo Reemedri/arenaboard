@@ -123,8 +123,13 @@ function requireAdmin(req, res, next) {
 
 const deviceConfigs = {}
 const deviceSockets = new Map()  // uid -> ws (for targeted admin messages)
-let lastState = {}
-let inNoGamesState = false  // tracks whether last ESPN poll returned zero live games (drives idle screen on clients)
+let lastState = {}                // mock-mode global state (single fake game broadcast to all)
+let inNoGamesState = false        // global: last ESPN poll returned zero live games — drives idle splash on default-following clients
+// Sprint 2: live games picker
+const deviceGameId    = new Map() // uid -> ESPN event id the device is following ('' or undefined = follow first live)
+const deviceLastState = new Map() // uid -> last game state seen for that device's chosen game (for per-device diffs)
+let lastESPNGames     = []        // cached array of all parsed games from most recent ESPN poll
+let lastESPNGamesAt   = 0         // timestamp of last ESPN cache refresh
 
 const mockState = {
   id: '401234567', status: 'STATUS_IN_PROGRESS', period: 1,
@@ -153,7 +158,17 @@ function parseGame(event) {
   const comp = event.competitions[0]
   const home = comp.competitors.find(t => t.homeAway === 'home')
   const away = comp.competitors.find(t => t.homeAway === 'away')
-  return { id: event.id, status: event.status.type.name, clock: event.status.displayClock, period: event.status.period, home_team: home.team.abbreviation, home_score: parseInt(home.score || 0), away_team: away.team.abbreviation, away_score: parseInt(away.score || 0) }
+  return {
+    id: event.id,
+    status: event.status.type.name,
+    status_detail: event.status?.type?.shortDetail || '',
+    clock: event.status.displayClock,
+    period: event.status.period,
+    home_team: home.team.abbreviation,
+    home_score: parseInt(home.score || 0),
+    away_team: away.team.abbreviation,
+    away_score: parseInt(away.score || 0),
+  }
 }
 
 function getDiff(newState, oldState) {
@@ -260,10 +275,61 @@ app.patch('/api/device/:uid/config', async (req, res) => {
 app.post('/api/device/:uid/trigger', (req, res) => {
   const { uid } = req.params
   const { reason = 'THREE', team = 'home' } = req.body
-  const colors = getTeamColors(team === 'home' ? lastState.home_team : lastState.away_team || 'LAL')
-  broadcast({ type: 'SCORE_EVENT', team, colors, reason })
+  // Prefer this device's tracked game, fall back to mock lastState, fall back to 'LAL' default.
+  const dev   = deviceLastState.get(uid) || lastState || {}
+  const tname = team === 'home' ? (dev.home_team || 'LAL') : (dev.away_team || 'LAL')
+  const colors = getTeamColors(tname)
+  // Send only to this device's socket — manual triggers are personal, not stadium-wide.
+  const ws = deviceSockets.get(uid)
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ v: 1, type: 'SCORE_EVENT', team, colors, reason }))
+  } else {
+    // Fallback (board not connected) — broadcast so any open client sees it
+    broadcast({ v: 1, type: 'SCORE_EVENT', team, colors, reason })
+  }
   logEvent(uid, 'trigger.manual', { reason, team })
   res.json({ ok: true, triggered: reason })
+})
+
+// ─── Sprint 2: Live games picker ───────────────────────────────────────────
+// Returns all games from the latest ESPN poll (live + final + scheduled). PWA Game tab uses this.
+app.get('/api/games', (req, res) => {
+  if (MOCK_MODE) {
+    return res.json({ games: [], mock_active: true, updated_at: Date.now() })
+  }
+  res.json({
+    games: lastESPNGames.map(g => ({
+      id: g.id,
+      is_live: g.status === 'STATUS_IN_PROGRESS',
+      is_final: g.status === 'STATUS_FINAL',
+      away_team: g.away_team,
+      home_team: g.home_team,
+      away_score: g.away_score,
+      home_score: g.home_score,
+      status_detail: g.status_detail || '',
+    })),
+    mock_active: false,
+    updated_at: lastESPNGamesAt,
+  })
+})
+
+// PWA calls this when the user picks a game in the Game tab. Stores in-memory only (resets on server restart).
+app.post('/api/device/:uid/active-game', (req, res) => {
+  const { uid } = req.params
+  const { game_id } = req.body || {}
+  if (!game_id) return res.status(400).json({ error: { code: 'MISSING_GAME_ID', message: 'game_id required' } })
+  deviceGameId.set(uid, game_id)
+  deviceLastState.delete(uid)  // force a fresh FULL_STATE on next poll for the new game
+  logEvent(uid, 'game.select', { game_id })
+  // If we already have the game cached, push it to the device immediately so the board flips on the next render frame.
+  const ws = deviceSockets.get(uid)
+  const game = lastESPNGames.find(g => g.id === game_id)
+  if (ws && ws.readyState === WebSocket.OPEN && game) {
+    const fullState = { ...game, home_color: getTeamColors(game.home_team).secondary, away_color: getTeamColors(game.away_team).secondary }
+    deviceLastState.set(uid, { ...game })
+    ws.send(JSON.stringify({ v: 1, type: 'FULL_STATE', data: fullState }))
+  }
+  res.json({ ok: true, uid, game_id })
 })
 
 app.get('/api/v1/admin/users', requireAuth, requireAdmin, async (req, res) => {
@@ -428,11 +494,15 @@ function processMockTick() {
 async function pollESPN() {
   try {
     const events = await fetchNBA()
-    const live = events.filter(e => e.status.type.name === 'STATUS_IN_PROGRESS')
-    if (!live.length) {
+    // Cache all games (live + final + scheduled) so /api/games can serve from RAM without re-hitting ESPN.
+    lastESPNGames   = events.map(parseGame)
+    lastESPNGamesAt = Date.now()
+
+    const liveGames = lastESPNGames.filter(g => g.status === 'STATUS_IN_PROGRESS')
+
+    if (!liveGames.length) {
       console.log('No live games')
-      // Broadcast NO_GAMES once per transition into no-games state. Clients use this to flip to idle splash.
-      // We don't spam it every 3s — only when state changes from "had a game" to "no games".
+      // Notify all devices once per transition into no-games state.
       if (!inNoGamesState) {
         inNoGamesState = true
         broadcast({ v: 1, type: 'NO_GAMES' })
@@ -440,9 +510,47 @@ async function pollESPN() {
       return
     }
     inNoGamesState = false
-    const game = parseGame(live[0])
-    const diff = getDiff(game, lastState)
-    if (diff) checkAndBroadcast(game, diff)
+
+    // Per-device fanout: each connected device gets updates for the game IT is following.
+    // If a device has no selection, it falls back to the first live game (same as old behaviour).
+    deviceSockets.forEach((ws, uid) => {
+      if (ws.readyState !== WebSocket.OPEN) return
+
+      const followedId = deviceGameId.get(uid)
+      let game = followedId ? lastESPNGames.find(g => g.id === followedId) : null
+      if (!game) game = liveGames[0]
+      if (!game) return
+
+      const prev = deviceLastState.get(uid) || {}
+      const diff = getDiff(game, prev)
+      if (!diff) return
+
+      // Detect score events (lead change / 3PT / clutch) only after we have prior state — first frame is a full snapshot, not an event.
+      if (Object.keys(prev).length > 0) {
+        const homeDiff     = game.home_score - game.away_score
+        const prevHomeDiff = (prev.home_score || 0) - (prev.away_score || 0)
+        const leadChanged  = (homeDiff > 0 && prevHomeDiff <= 0) || (homeDiff < 0 && prevHomeDiff >= 0)
+        const isThree = (diff.home_score !== undefined && game.home_score - (prev.home_score || 0) === 3) ||
+                        (diff.away_score !== undefined && game.away_score - (prev.away_score || 0) === 3)
+        const clutch = game.period === 4 && Math.abs(homeDiff) <= 5
+        if (leadChanged || isThree || clutch) {
+          const team   = diff.home_score !== undefined ? 'home' : 'away'
+          const colors = getTeamColors(team === 'home' ? game.home_team : game.away_team)
+          const reason = leadChanged ? 'LEAD_CHANGE' : isThree ? 'THREE' : 'CLUTCH'
+          ws.send(JSON.stringify({ v: 1, type: 'SCORE_EVENT', team, colors, reason }))
+          logEvent('global', 'score.event', { reason, uid, game_id: game.id })
+        }
+      }
+
+      // Add team color hints on the first state for this device/game pairing.
+      if (!prev.home_team) {
+        diff.home_color = getTeamColors(game.home_team).secondary
+        diff.away_color = getTeamColors(game.away_team).secondary
+      }
+
+      deviceLastState.set(uid, { ...game })
+      ws.send(JSON.stringify({ v: 1, type: 'SCORE_UPDATE', data: diff }))
+    })
   } catch (err) { console.error('Poll error:', err.message) }
 }
 
@@ -452,16 +560,28 @@ wss.on('connection', async (ws, req) => {
   deviceSockets.set(uid, ws)
   await getOrCreateDevice(uid)
   logEvent(uid, 'device.connect', { uid })
-  if (Object.keys(lastState).length > 0) {
+  // Send FULL_STATE for whatever this device is following.
+  // Priority: explicit selection → first live game → mock-mode lastState → NO_GAMES idle.
+  const followedIdConn = deviceGameId.get(uid)
+  let initGame = followedIdConn ? lastESPNGames.find(g => g.id === followedIdConn) : null
+  if (!initGame && lastESPNGames.length) {
+    initGame = lastESPNGames.find(g => g.status === 'STATUS_IN_PROGRESS') || null
+  }
+  if (initGame) {
+    const fullState = { ...initGame, home_color: getTeamColors(initGame.home_team).secondary, away_color: getTeamColors(initGame.away_team).secondary }
+    deviceLastState.set(uid, { ...initGame })
+    ws.send(JSON.stringify({ v: 1, type: 'FULL_STATE', data: fullState }))
+  } else if (Object.keys(lastState).length > 0) {
+    // Mock mode path — still uses single global lastState
     ws.send(JSON.stringify({ type: 'FULL_STATE', data: { ...lastState, home_color: getTeamColors(lastState.home_team).secondary, away_color: getTeamColors(lastState.away_team).secondary } }))
   } else if (inNoGamesState) {
-    // No game has been seen yet AND ESPN reports nothing live — tell the client to show idle splash immediately.
     ws.send(JSON.stringify({ v: 1, type: 'NO_GAMES' }))
   }
   const saved = await getConfig(uid)
   if (saved) ws.send(JSON.stringify({ type: 'CONFIG_UPDATE', data: saved.settings }))
   ws.on('close', () => {
     if (deviceSockets.get(uid) === ws) deviceSockets.delete(uid)
+    deviceLastState.delete(uid)  // Sprint 2: free per-device state on disconnect; selection persists in deviceGameId
     logEvent(uid, 'device.disconnect', { uid })
     console.log(`Board disconnected: ${uid} — total: ${wss.clients.size}`)
   })
