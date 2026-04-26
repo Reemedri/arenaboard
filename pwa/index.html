@@ -19,6 +19,30 @@
     overscroll-behavior: none;
   }
   #root { min-height: 100vh; display: flex; flex-direction: column; }
+  /* Desktop phone-frame chrome — only on wide screens. On a real phone (<600px) the app fills the viewport. */
+  @media (min-width: 600px) {
+    body {
+      background: radial-gradient(circle at 50% 30%, #14161E 0%, #08090D 60%);
+      display: flex; align-items: center; justify-content: center; padding: 36px 0 24px;
+    }
+    #root {
+      width: 390px; min-height: 0; height: 844px; max-height: calc(100vh - 60px);
+      border-radius: 52px; overflow: hidden; background: #08090D;
+      box-shadow: 0 0 0 11px #1A1C24, 0 0 0 12px #2E313D, 0 30px 80px rgba(0,0,0,0.6);
+      position: relative;
+    }
+    #root::before {
+      content: ''; position: absolute; top: 11px; left: 50%; transform: translateX(-50%);
+      width: 120px; height: 34px; border-radius: 20px; background: #000; z-index: 50;
+    }
+    #root::after {
+      content: '○ PHONE · IPHONE 15 PRO'; position: absolute; top: -28px; left: 0; right: 0;
+      text-align: center; font-size: 10px; letter-spacing: 2px; color: rgba(255,255,255,0.35);
+      font-family: "JetBrains Mono", monospace; pointer-events: none;
+    }
+    .ab-statusbar { display: flex !important; }
+  }
+  .ab-statusbar { display: none; }
   button { font-family: inherit; }
   input[type="range"] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1); outline: none; }
   input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #FF6A1A; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
@@ -260,6 +284,7 @@ function useBackend() {
   const [mockActive, setMockActive] = React.useState(false)
   const [selectedGame, setSelectedGame] = React.useState(null)
   const [gameLive, setGameLive] = React.useState({ status: null, home_team: null, away_team: null, home_score: 0, away_score: 0, period: 1, clock: '12:00' })
+  const [summary, setSummary] = React.useState(null)
   const [wsStatus, setWsStatus] = React.useState('connecting')
   const [momentActive, setMomentActive] = React.useState(0)
   const [toastNode, showToast] = useToast()
@@ -307,6 +332,25 @@ function useBackend() {
     } catch (e) { /* offline */ }
   }, [])
 
+  // Poll the rich summary endpoint whenever a game is locked. 8s cadence — server caches at 5s so this is gentle.
+  React.useEffect(() => {
+    // The "active game" we want details for is either the explicitly selected one,
+    // or — when nothing is locked — the first game from today's list (so the Live tab is never empty).
+    const targetId = selectedGame || (games[0] && games[0].id)
+    if (!targetId) { setSummary(null); return }
+    let cancelled = false
+    const fetchSummary = async () => {
+      try {
+        const r = await fetch(`${SERVER}/api/games/${targetId}/summary`)
+        const data = await r.json()
+        if (!cancelled) setSummary(data)
+      } catch (e) { /* offline — keep last summary */ }
+    }
+    fetchSummary()
+    const id = setInterval(fetchSummary, 8000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [selectedGame, games])
+
   React.useEffect(() => {
     fetch(`${SERVER}/api/device/${DEVICE_UID}/config`)
       .then(r => r.json())
@@ -346,6 +390,7 @@ function useBackend() {
     games, gamesUpdatedAt, mockActive,
     selectedGame, selectGame,
     gameLive, wsStatus, momentActive,
+    summary,
     toastNode,
   }
 }
@@ -377,112 +422,235 @@ const TEAM_COLORS = {
 const teamTint = (abbr) => TEAM_COLORS[abbr] || APP.accent
 
 // ─── LIVE screen ────────────────────────────────────────────────────
-function LiveScreen({ backend }) {
-  const { gameLive, momentActive, fireTrigger, wsStatus, selectedGame, games } = backend
-  const live = isLive(gameLive)
-  const hasGame = !!gameLive.home_team
-  const homeTint = teamTint(gameLive.home_team)
-  const awayTint = teamTint(gameLive.away_team)
-  const lead = (gameLive.home_score || 0) - (gameLive.away_score || 0)
-  const total = (gameLive.home_score || 0) + (gameLive.away_score || 0)
-  const homePct = total > 0 ? Math.round(((gameLive.home_score || 0) / total) * 100) : 50
+function LiveScreen({ backend, onChangeGame }) {
+  const { gameLive, momentActive, fireTrigger, summary, games, selectedGame } = backend
+  // Prefer the rich summary feed; fall back to whatever's broadcast over WS.
+  const s = summary && !summary.error ? summary : null
+  const homeAbbr = s?.home?.abbr || gameLive.home_team || (games[0] && games[0].home_team)
+  const awayAbbr = s?.away?.abbr || gameLive.away_team || (games[0] && games[0].away_team)
+  const homeName = s?.home?.name || homeAbbr || 'Home'
+  const awayName = s?.away?.name || awayAbbr || 'Away'
+  const homeColor = (s?.home?.color) || teamTint(homeAbbr)
+  const awayColor = (s?.away?.color) || teamTint(awayAbbr)
+  const homeScore = s?.home?.score ?? gameLive.home_score ?? 0
+  const awayScore = s?.away?.score ?? gameLive.away_score ?? 0
+  const homeLines = s?.home?.linescores || []
+  const awayLines = s?.away?.linescores || []
+  const live = (s && s.status?.includes('IN_PROGRESS')) || isLive(gameLive)
+  const final = (s && s.status?.includes('FINAL')) || isFinal(gameLive)
+  const statusText = s?.status_detail || statusLabel(gameLive)
+
+  const watching = homeAbbr && awayAbbr ? `${homeAbbr} vs ${awayAbbr}` : 'Pick a game'
 
   return (
-    <div className="screen-fade" style={{ padding: '0 16px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* Status strip */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {live ? <LiveChip>LIVE</LiveChip> : isFinal(gameLive) ? <Pill color={APP.textMuted}>FINAL</Pill> : <Pill color={APP.accent2}>{statusLabel(gameLive)}</Pill>}
-        <div style={{ flex: 1, fontSize: 11, color: APP.textMuted, fontFamily: TYPE.mono }}>
-          {wsStatus === 'connected' ? 'MIRRORING TO BOARD' : 'BOARD OFFLINE'}
+    <div className="screen-fade" style={{ padding: '0 16px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Now-watching pill */}
+      <div style={{
+        padding: '10px 12px', borderRadius: 14,
+        background: 'rgba(255,255,255,0.04)', border: `1px solid ${APP.line}`,
+        display: 'flex', alignItems: 'center', gap: 10,
+      }}>
+        <TeamPair home={homeAbbr} away={awayAbbr} homeColor={homeColor} awayColor={awayColor} small />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: 1.8, color: APP.textMuted }}>NOW WATCHING</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: APP.text, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{watching}</div>
         </div>
-        {momentActive > 0 && <Pill color={APP.gold} bg={`${APP.gold}30`}>MOMENT</Pill>}
+        <button onClick={onChangeGame} style={{
+          padding: '6px 12px', borderRadius: 999, border: 'none',
+          background: 'rgba(255,255,255,0.08)', color: APP.accent,
+          fontSize: 12, fontWeight: 700, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 4, fontFamily: TYPE.sans,
+        }}>Change {Icon.chev(APP.accent)}</button>
       </div>
 
-      {/* Scoreboard */}
+      {/* Pregame / live / final card */}
       <div style={{
-        position: 'relative', borderRadius: 24, overflow: 'hidden',
-        background: hasGame
-          ? `linear-gradient(135deg, ${homeTint}20 0%, ${APP.card} 50%, ${awayTint}20 100%)`
-          : APP.card,
-        border: `1px solid ${APP.lineBold}`,
-        padding: '22px 18px',
+        position: 'relative', borderRadius: 22, overflow: 'hidden',
+        background: `linear-gradient(135deg, ${homeColor}1F 0%, ${APP.card} 50%, ${awayColor}1F 100%)`,
+        border: `1px solid ${APP.lineBold}`, padding: '14px 16px 16px',
       }}>
-        {hasGame ? (
-          <React.Fragment>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-              <TeamBlock abbr={gameLive.home_team} score={gameLive.home_score} tint={homeTint} side="HOME" />
-              <div style={{ textAlign: 'center', paddingTop: 18 }}>
-                <div style={{ fontSize: 11, color: APP.textMuted, letterSpacing: 1.5, fontFamily: TYPE.mono, marginBottom: 4 }}>{statusLabel(gameLive)}</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: lead === 0 ? APP.text : lead > 0 ? homeTint : awayTint, fontFamily: TYPE.display, fontStyle: 'italic' }}>
-                  {lead === 0 ? 'TIED' : `${lead > 0 ? '+' : ''}${lead}`}
-                </div>
+        {/* Status header inside card */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          {live
+            ? <LiveChip>LIVE · {statusText}</LiveChip>
+            : final
+              ? <Pill color={APP.textMuted}>FINAL</Pill>
+              : <Pill color={APP.accent2}>{statusText.toUpperCase()}</Pill>}
+          {momentActive > 0 && <Pill color={APP.gold} bg={`${APP.gold}30`}>MOMENT</Pill>}
+        </div>
+
+        {/* Teams + scores row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14 }}>
+          <TeamSide abbr={homeAbbr} name={homeName} role="Home" color={homeColor} score={homeScore} showScore={live || final} align="left" />
+          <div style={{ minWidth: 38, textAlign: 'center' }}>
+            <div style={{ fontSize: 11, fontFamily: TYPE.mono, color: APP.textMuted, letterSpacing: 1.5 }}>VS</div>
+          </div>
+          <TeamSide abbr={awayAbbr} name={awayName} role="Away" color={awayColor} score={awayScore} showScore={live || final} align="right" />
+        </div>
+
+        {/* Score-by-quarter bars */}
+        <div style={{ marginTop: 14, display: 'flex', justifyContent: 'space-between', gap: 18 }}>
+          <QuarterBars scores={homeLines.length ? homeLines : [0,0,0,0]} color={homeColor} align="left" />
+          <QuarterBars scores={awayLines.length ? awayLines : [0,0,0,0]} color={awayColor} align="right" />
+        </div>
+      </div>
+
+      {/* Player highlight card */}
+      {s && s.leaders && s.leaders[0] ? <LeaderCard leader={s.leaders[0]} accentColor={APP.accent} /> : null}
+
+      {/* Play-by-play */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ fontSize: 10, letterSpacing: 1.6, fontWeight: 800, color: APP.textMuted }}>PLAY-BY-PLAY</div>
+          <div style={{ flex: 1, height: 1, background: APP.line }} />
+        </div>
+        <PlayByPlay plays={s?.plays} fallbackHomeColor={homeColor} fallbackAwayColor={awayColor} />
+      </div>
+
+      {/* Big test button (the design's CTA) — fires DUNK trigger to the board */}
+      <button onClick={() => fireTrigger('DUNK')} style={{
+        marginTop: 6,
+        padding: '16px 18px', borderRadius: 18, border: 'none', cursor: 'pointer',
+        background: `linear-gradient(135deg, ${APP.accent} 0%, #FF8A3D 100%)`,
+        color: '#0B0C10', fontSize: 14, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase',
+        fontFamily: TYPE.sans, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+        boxShadow: `0 6px 20px ${APP.accent}40`,
+      }}>
+        {Icon.bolt('#0B0C10')} Test Moment of Impact
+      </button>
+    </div>
+  )
+}
+
+// Two stacked logo circles, slightly overlapped — used in the now-watching pill.
+function TeamPair({ home, away, homeColor, awayColor, small }) {
+  const sz = small ? 28 : 40
+  return (
+    <div style={{ display: 'flex', alignItems: 'center' }}>
+      <LogoCircle abbr={home} color={homeColor} size={sz} />
+      <div style={{ marginLeft: -10 }}><LogoCircle abbr={away} color={awayColor} size={sz} /></div>
+    </div>
+  )
+}
+
+function LogoCircle({ abbr, color, size = 48 }) {
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: size / 2,
+      background: color || APP.card,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: '#fff', fontWeight: 900, fontSize: size * 0.32,
+      letterSpacing: -0.3, fontFamily: TYPE.sans,
+      border: `2px solid rgba(255,255,255,0.1)`,
+      boxShadow: `0 4px 14px ${color || '#000'}40`,
+      flexShrink: 0,
+    }}>{abbr || '—'}</div>
+  )
+}
+
+function TeamSide({ abbr, name, role, color, score, showScore, align }) {
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: align === 'right' ? 'flex-end' : 'flex-start', minWidth: 0 }}>
+      <LogoCircle abbr={abbr} color={color} />
+      <div style={{ marginTop: 8, fontSize: 11, fontWeight: 800, color: APP.text, letterSpacing: 0.2, textAlign: align }}>{name}</div>
+      <div style={{ fontSize: 9, color: APP.textMuted, letterSpacing: 1.5, marginTop: 2, fontFamily: TYPE.mono }}>{role.toUpperCase()}</div>
+      {showScore && (
+        <div style={{ fontSize: 36, fontWeight: 900, color: APP.text, fontFamily: TYPE.display, lineHeight: 1, marginTop: 6, letterSpacing: -1 }}>{score}</div>
+      )}
+    </div>
+  )
+}
+
+function QuarterBars({ scores, color, align }) {
+  // Show up to 4 segments; values normalized so the tallest cap caps at full bar height.
+  const visible = scores.slice(0, 4)
+  const max = Math.max(1, ...visible)
+  return (
+    <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', flexDirection: align === 'right' ? 'row-reverse' : 'row' }}>
+      {[0,1,2,3].map(i => {
+        const v = visible[i] ?? 0
+        const pct = max > 0 ? (v / max) * 100 : 0
+        const filled = v > 0
+        return (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 28, height: 4, borderRadius: 2, background: filled ? color : 'rgba(255,255,255,0.08)', opacity: filled ? 0.95 : 1 }} />
+            <div style={{ fontSize: 10, fontWeight: 700, color: filled ? color : APP.textDim, fontFamily: TYPE.mono }}>{v || '–'}</div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function LeaderCard({ leader, accentColor }) {
+  const stats = (leader.line || '').split(',').map(s => s.trim()).filter(Boolean)
+  return (
+    <div style={{
+      padding: '12px 14px', borderRadius: 16,
+      background: `linear-gradient(90deg, ${accentColor}26 0%, ${APP.card} 100%)`,
+      border: `1px solid ${APP.line}`, display: 'flex', alignItems: 'center', gap: 12,
+    }}>
+      <div style={{
+        width: 42, height: 42, borderRadius: 21, background: accentColor, color: '#0B0C10',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontWeight: 900, fontSize: 14, fontFamily: TYPE.display, flexShrink: 0,
+      }}>{leader.jersey || '★'}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: APP.text, display: 'flex', alignItems: 'center', gap: 6 }}>
+          {leader.name || 'Top performer'} <span style={{ fontSize: 12 }}>🔥</span>
+        </div>
+        <div style={{ fontSize: 11, color: APP.textMuted, marginTop: 2, fontFamily: TYPE.mono, letterSpacing: 0.4 }}>
+          {leader.team || ''}{leader.position ? ` · ${leader.position}` : ''}{stats.length ? ` · ${stats.slice(0,3).join(' · ')}` : ''}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PlayByPlay({ plays, fallbackHomeColor, fallbackAwayColor }) {
+  if (!plays || plays.length === 0) {
+    return (
+      <div style={{ padding: '18px 14px', borderRadius: 14, background: APP.card, border: `1px solid ${APP.line}`, fontSize: 12, color: APP.textMuted, textAlign: 'center', fontFamily: TYPE.mono, letterSpacing: 1.2 }}>
+        FEED LIGHTS UP AT TIPOFF
+      </div>
+    )
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {plays.slice(0, 5).map((p, i) => {
+        const tag = playTag(p)
+        const tint = tag.tint || (i % 2 === 0 ? fallbackHomeColor : fallbackAwayColor)
+        return (
+          <div key={p.id || i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px' }}>
+            <div style={{ minWidth: 38, textAlign: 'left' }}>
+              <div style={{ fontSize: 9, color: APP.textDim, fontFamily: TYPE.mono, fontWeight: 700 }}>Q{p.period}</div>
+              <div style={{ fontSize: 13, color: APP.text, fontWeight: 800, fontFamily: TYPE.mono, letterSpacing: -0.3 }}>{p.clock || '—'}</div>
+            </div>
+            <div style={{ width: 3, height: 30, borderRadius: 2, background: tint, opacity: 0.85, flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Pill color={tag.tint} bg={`${tag.tint}25`}>{tag.label}</Pill>
               </div>
-              <TeamBlock abbr={gameLive.away_team} score={gameLive.away_score} tint={awayTint} side="AWAY" align="right" />
-            </div>
-            {/* Momentum bar */}
-            <div style={{ marginTop: 18, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)', overflow: 'hidden', display: 'flex' }}>
-              <div style={{ width: `${homePct}%`, background: homeTint, transition: 'width 600ms ease' }} />
-              <div style={{ flex: 1, background: awayTint }} />
-            </div>
-          </React.Fragment>
-        ) : (
-          <div style={{ textAlign: 'center', padding: '30px 0' }}>
-            <div style={{ fontSize: 40, fontFamily: TYPE.display, color: APP.textMuted, fontStyle: 'italic' }}>—</div>
-            <div style={{ marginTop: 8, fontSize: 12, color: APP.textMuted, letterSpacing: 1.5, fontFamily: TYPE.mono, textTransform: 'uppercase' }}>
-              {games.length === 0 ? 'No games today' : 'Pick a game to mirror'}
+              <div style={{ fontSize: 12, color: APP.textMuted, marginTop: 3, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.text}</div>
             </div>
           </div>
-        )}
-      </div>
-
-      {/* Triggers */}
-      <div>
-        <SectionHead>Quick triggers</SectionHead>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-          <TriggerBtn onClick={() => fireTrigger('DUNK')} label="Dunk" tint={APP.accent} />
-          <TriggerBtn onClick={() => fireTrigger('THREE')} label="Three" tint={APP.accent2} />
-          <TriggerBtn onClick={() => fireTrigger('BUZZER')} label="Buzzer" tint={APP.gold} />
-        </div>
-      </div>
-
-      {/* Active game indicator */}
-      <div style={{ padding: '12px 14px', borderRadius: 12, background: APP.card, border: `1px solid ${APP.line}`, fontSize: 12, color: APP.textMuted, display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 8, height: 8, borderRadius: 4, background: selectedGame ? APP.good : APP.textDim }} />
-        <span style={{ flex: 1 }}>{selectedGame ? `Locked to game ${selectedGame.slice(-6)}` : 'Auto-follow today’s top game'}</span>
-        <span style={{ fontFamily: TYPE.mono, fontSize: 10, letterSpacing: 1 }}>{wsStatus.toUpperCase()}</span>
-      </div>
+        )
+      })}
     </div>
   )
 }
 
-function TeamBlock({ abbr, score, tint, side, align = 'left' }) {
-  return (
-    <div style={{ flex: 1, textAlign: align, minWidth: 0 }}>
-      <div style={{ fontSize: 9, fontWeight: 800, color: APP.textMuted, letterSpacing: 2, fontFamily: TYPE.mono }}>{side}</div>
-      <div style={{
-        fontSize: 28, fontWeight: 900, color: tint, letterSpacing: -0.5, marginTop: 2,
-        textShadow: `0 0 22px ${tint}40`,
-      }}>{abbr || '—'}</div>
-      <div style={{ fontSize: 64, fontWeight: 900, color: APP.text, fontFamily: TYPE.display, lineHeight: 1, marginTop: 4, letterSpacing: -2 }}>
-        {score ?? 0}
-      </div>
-    </div>
-  )
-}
-
-function TriggerBtn({ onClick, label, tint }) {
-  return (
-    <button onClick={onClick} style={{
-      padding: '14px 8px', borderRadius: 14, border: `1px solid ${tint}40`,
-      background: `${tint}15`, color: tint,
-      fontSize: 13, fontWeight: 700, letterSpacing: 0.3, fontFamily: TYPE.sans,
-      cursor: 'pointer', transition: 'all 140ms',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-    }}>
-      {Icon.bolt(tint)}
-      {label}
-    </button>
-  )
+function playTag(p) {
+  const t = (p.text || '').toLowerCase()
+  if (p.score_value === 3) return { label: '3PT',  tint: APP.accent2 }
+  if (t.includes('dunk'))   return { label: 'DUNK', tint: APP.accent }
+  if (t.includes('block'))  return { label: 'BLK',  tint: '#A569FF' }
+  if (t.includes('steal'))  return { label: 'STL',  tint: APP.good }
+  if (t.includes('foul'))   return { label: 'FOUL', tint: APP.danger }
+  if (t.includes('assist')) return { label: 'AST',  tint: APP.gold }
+  if (t.includes('rebound'))return { label: 'REB',  tint: APP.textMuted }
+  if (p.scoring)            return { label: '2PT',  tint: APP.accent2 }
+  return { label: (p.type || 'PLAY').toUpperCase().slice(0, 4), tint: APP.textMuted }
 }
 
 // ─── GAMES screen ──────────────────────────────────────────────────
@@ -539,9 +707,11 @@ function GamesScreen({ backend }) {
                 <div style={{ minWidth: 56 }}>
                   {live ? <LiveChip>LIVE</LiveChip> : isFinal(g) ? <Pill color={APP.textMuted}>FINAL</Pill> : <Pill color={APP.accent2}>SCHED</Pill>}
                 </div>
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <LogoCircle abbr={g.away_team} color={awayT} size={28} />
                   <TeamLine abbr={g.away_team} score={g.away_score} tint={awayT} winner={g.away_score > g.home_score && isFinal(g)} />
                   <div style={{ fontSize: 10, color: APP.textDim, fontFamily: TYPE.mono }}>@</div>
+                  <LogoCircle abbr={g.home_team} color={homeT} size={28} />
                   <TeamLine abbr={g.home_team} score={g.home_score} tint={homeT} winner={g.home_score > g.away_score && isFinal(g)} />
                 </div>
                 <div style={{ minWidth: 60, textAlign: 'right' }}>
@@ -711,7 +881,7 @@ function App() {
       <DeviceTopBar onOpenSettings={() => setTab('display')} wsStatus={backend.wsStatus} />
       <AppHeader title={t.title} sub={t.sub} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-        {tab === 'live'    && <LiveScreen    backend={backend} />}
+        {tab === 'live'    && <LiveScreen    backend={backend} onChangeGame={() => setTab('games')} />}
         {tab === 'games'   && <GamesScreen   backend={backend} />}
         {tab === 'display' && <DisplayScreen backend={backend} />}
         {tab === 'market'  && <PreviewScreen title="Skin marketplace" blurb="Buy team skins, season packs, and signature animations from your favorite players. Backend purchase flow + content delivery ships next sprint." />}

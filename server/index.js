@@ -332,6 +332,83 @@ app.post('/api/device/:uid/active-game', (req, res) => {
   res.json({ ok: true, uid, game_id })
 })
 
+// Sprint 3.1: rich game data — play-by-play, leaders, linescores, broadcasts.
+// Proxies ESPN's free /summary endpoint with a 5-second in-memory cache so the PWA can poll
+// without hammering ESPN. No auth required (public NBA data).
+const summaryCache = new Map()  // game_id -> { data, at }
+app.get('/api/games/:id/summary', async (req, res) => {
+  const id = req.params.id
+  const now = Date.now()
+  const cached = summaryCache.get(id)
+  if (cached && now - cached.at < 5000) return res.json(cached.data)
+  try {
+    const r = await axios.get(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${id}`, { timeout: 4000 })
+    const s = r.data || {}
+    const header = s.header || {}
+    const comp = header.competitions?.[0] || {}
+    const competitors = comp.competitors || []
+    const home = competitors.find(c => c.homeAway === 'home') || {}
+    const away = competitors.find(c => c.homeAway === 'away') || {}
+    const teamMap = {}
+    competitors.forEach(c => { if (c.team?.id) teamMap[c.team.id] = c.team.abbreviation })
+
+    const data = {
+      id,
+      status: header.competitions?.[0]?.status?.type?.name || 'STATUS_SCHEDULED',
+      status_detail: header.competitions?.[0]?.status?.type?.shortDetail || '',
+      start_iso: comp.date || null,
+      home: {
+        abbr: home.team?.abbreviation,
+        name: home.team?.shortDisplayName || home.team?.name,
+        logo: home.team?.logos?.[0]?.href || null,
+        color: home.team?.color ? `#${home.team.color}` : null,
+        score: parseInt(home.score || 0),
+        record: home.records?.[0]?.summary || '',
+        linescores: (home.linescores || []).map(l => Number(l.value || 0)),
+      },
+      away: {
+        abbr: away.team?.abbreviation,
+        name: away.team?.shortDisplayName || away.team?.name,
+        logo: away.team?.logos?.[0]?.href || null,
+        color: away.team?.color ? `#${away.team.color}` : null,
+        score: parseInt(away.score || 0),
+        record: away.records?.[0]?.summary || '',
+        linescores: (away.linescores || []).map(l => Number(l.value || 0)),
+      },
+      // Top performers — ESPN returns leader categories (points, rebounds, assists, rating). We pick the rating leader if present, else points.
+      leaders: (() => {
+        const pickLeader = (cArr) => {
+          if (!Array.isArray(cArr)) return null
+          const ratingCat = cArr.find(c => c.name === 'rating') || cArr.find(c => c.name === 'points')
+          const top = ratingCat?.leaders?.[0]
+          if (!top) return null
+          const ath = top.athlete || {}
+          return {
+            id: ath.id, name: ath.shortName || ath.displayName, jersey: ath.jersey || null, headshot: ath.headshot?.href || null,
+            position: ath.position?.abbreviation || '', team: teamMap[top.team?.id] || null, line: top.displayValue || '',
+          }
+        }
+        return (s.leaders || []).map(t => pickLeader(t.leaders)).filter(Boolean)
+      })(),
+      // Last ~12 plays so the PWA shows a tight feed. Keep coordinates so a future shot-chart can use them.
+      plays: (s.plays || []).slice(-12).reverse().map(p => ({
+        id: p.id, period: p.period?.number || 0, clock: p.clock?.displayValue || '',
+        text: p.text || '', score_value: p.scoreValue || 0,
+        scoring: !!p.scoringPlay, shooting: !!p.shootingPlay,
+        type: p.type?.text || '', team: teamMap[p.team?.id] || null,
+        coordinate: p.coordinate || null,
+      })),
+      broadcasts: (comp.broadcasts || []).flatMap(b => b.names || []),
+      venue: comp.venue?.fullName || null,
+    }
+    summaryCache.set(id, { data, at: now })
+    res.json(data)
+  } catch (err) {
+    // Don't blow up the PWA — return a usable shell. Common causes: invalid id, ESPN 404 on a future game with no summary yet.
+    res.json({ id, error: 'unavailable', message: err.message, status: 'STATUS_SCHEDULED', plays: [], leaders: [], home: {}, away: {} })
+  }
+})
+
 app.get('/api/v1/admin/users', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { rows } = await db.query('SELECT id, email, display_name, role, created_at, email_verified, suspended_at FROM users WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 100')
