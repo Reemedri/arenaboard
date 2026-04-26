@@ -124,6 +124,7 @@ function requireAdmin(req, res, next) {
 const deviceConfigs = {}
 const deviceSockets = new Map()  // uid -> ws (for targeted admin messages)
 let lastState = {}
+let inNoGamesState = false  // tracks whether last ESPN poll returned zero live games (drives idle screen on clients)
 
 const mockState = {
   id: '401234567', status: 'STATUS_IN_PROGRESS', period: 1,
@@ -428,7 +429,17 @@ async function pollESPN() {
   try {
     const events = await fetchNBA()
     const live = events.filter(e => e.status.type.name === 'STATUS_IN_PROGRESS')
-    if (!live.length) { console.log('No live games'); return }
+    if (!live.length) {
+      console.log('No live games')
+      // Broadcast NO_GAMES once per transition into no-games state. Clients use this to flip to idle splash.
+      // We don't spam it every 3s — only when state changes from "had a game" to "no games".
+      if (!inNoGamesState) {
+        inNoGamesState = true
+        broadcast({ v: 1, type: 'NO_GAMES' })
+      }
+      return
+    }
+    inNoGamesState = false
     const game = parseGame(live[0])
     const diff = getDiff(game, lastState)
     if (diff) checkAndBroadcast(game, diff)
@@ -443,6 +454,9 @@ wss.on('connection', async (ws, req) => {
   logEvent(uid, 'device.connect', { uid })
   if (Object.keys(lastState).length > 0) {
     ws.send(JSON.stringify({ type: 'FULL_STATE', data: { ...lastState, home_color: getTeamColors(lastState.home_team).secondary, away_color: getTeamColors(lastState.away_team).secondary } }))
+  } else if (inNoGamesState) {
+    // No game has been seen yet AND ESPN reports nothing live — tell the client to show idle splash immediately.
+    ws.send(JSON.stringify({ v: 1, type: 'NO_GAMES' }))
   }
   const saved = await getConfig(uid)
   if (saved) ws.send(JSON.stringify({ type: 'CONFIG_UPDATE', data: saved.settings }))

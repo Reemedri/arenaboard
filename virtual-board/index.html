@@ -161,6 +161,11 @@ let shakeX=0, shakeY=0, shakeFrames=0
 let flashActive=false, flashFrame=0
 let particles=[]
 let scrollX=128, scrollText=''
+// ─── Idle splash state ───
+// boardMode controls what gets rendered: 'idle' = branded splash, 'live' = scoreboard, 'final' = scoreboard with FINAL badge
+// On NO_GAMES from server: stay 'final' if we just ended a game (until finalUntil), else flip to 'idle'.
+let boardMode='idle'
+let finalUntil=0
 
 // gamma 2.2
 const GAMMA=[]
@@ -425,6 +430,67 @@ function drawUI(){
   }
 }
 
+function drawIdleSplash(){
+  // Idle screen: shown when boardMode==='idle' (no live games, no recent final).
+  // Layer 0 (ambient) keeps running underneath so the screen still feels alive in team colors.
+  clearLayer(1)
+
+  // Power LED dot in top-right (echoes the physical bezel LED — visual continuity)
+  const ledOn = Math.floor(pulseFrame/30) % 2 === 0
+  const ledCol = ledOn ? '#ff2222' : '#330000'
+  px(1,126,1,ledCol); px(1,127,1,ledCol)
+  px(1,126,2,ledCol); px(1,127,2,ledCol)
+
+  // "ARENABOARD" — small font scaled 2x2, centered, in accent color with subtle breathing pulse
+  const brandStr='ARENABOARD'
+  const accent=config.accent_color||'#ff5500'
+  const accentRgb=hexRgb(accent)
+  const pulse=(Math.sin(pulseFrame*0.04)+1)/2  // 0..1, slow ~3s cycle
+  const bright=0.55+pulse*0.45                  // 0.55..1.0
+  const br=Math.round(accentRgb.r*bright)
+  const bg=Math.round(accentRgb.g*bright)
+  const bb=Math.round(accentRgb.b*bright)
+  const brandCol=`#${br.toString(16).padStart(2,'0')}${bg.toString(16).padStart(2,'0')}${bb.toString(16).padStart(2,'0')}`
+
+  // Width at 2x: each char is (font_w * 2) + 2px gap; remove final gap
+  let totalW=0
+  for(const ch of brandStr){const G=SF[ch];if(G)totalW+=G[0].length*2+2}
+  totalW-=2
+  let cx=Math.floor((COLS-totalW)/2)
+  const cy=16
+  for(const ch of brandStr){
+    const G=SF[ch];if(!G){cx+=8;continue}
+    for(let r=0;r<5;r++)for(let c=0;c<G[r].length;c++)if(G[r][c]){
+      // draw 2x2 block per font pixel
+      px(1,cx+c*2,  cy+r*2,  brandCol)
+      px(1,cx+c*2+1,cy+r*2,  brandCol)
+      px(1,cx+c*2,  cy+r*2+1,brandCol)
+      px(1,cx+c*2+1,cy+r*2+1,brandCol)
+    }
+    cx+=G[0].length*2+2
+  }
+
+  // Subtitle line — dim
+  sTxtC(1,'NO LIVE GAMES',36,'#333333')
+
+  // Decorative team-color sweep across rows 50-51 (slow horizontal pulse from team colors)
+  const sweep=(ambientFrame*0.5)%COLS
+  for(let c=0;c<COLS;c++){
+    const dist=Math.min(Math.abs(c-sweep),COLS-Math.abs(c-sweep))
+    if(dist<22){
+      const intensity=(1-dist/22)*0.55
+      const baseRgb=hexRgb(c>=COLS/2?homeColor:awayColor)
+      const r2=Math.round(baseRgb.r*intensity)
+      const g2=Math.round(baseRgb.g*intensity)
+      const b2=Math.round(baseRgb.b*intensity)
+      if(r2+g2+b2>3){
+        const col=`#${r2.toString(16).padStart(2,'0')}${g2.toString(16).padStart(2,'0')}${b2.toString(16).padStart(2,'0')}`
+        px(1,c,50,col); px(1,c,51,col)
+      }
+    }
+  }
+}
+
 function drawHUD(){
   clearLayer(2)
   if(state.status==='STATUS_IN_PROGRESS'){
@@ -511,7 +577,16 @@ setInterval(()=>{
     scrollX-=0.6
     if(scrollX<-sTxtW(scrollText))scrollX=COLS
   }
-  drawAmbient();drawUI();drawHUD();updateParticles();applyFlash()
+  drawAmbient()
+  // Auto-flip from 'final' back to 'idle' after the 5-minute final-score window expires
+  if(boardMode==='final' && Date.now() >= finalUntil) boardMode='idle'
+  if(boardMode==='idle'){
+    drawIdleSplash()
+  } else {
+    drawUI()
+    drawHUD()
+  }
+  updateParticles();applyFlash()
   render(composite())
 },50)
 
@@ -594,6 +669,26 @@ function connect(){
       state={...state,...msg.data}
       if(msg.data.home_color)homeColor=msg.data.home_color
       if(msg.data.away_color)awayColor=msg.data.away_color
+      // Real game data → leave idle splash. STATUS_FINAL = freeze final score for 5 min before idling.
+      if(state.status==='STATUS_IN_PROGRESS'){
+        boardMode='live'
+      } else if(state.status==='STATUS_FINAL'){
+        if(boardMode!=='final'){
+          finalUntil=Date.now()+5*60*1000
+          log('Game over — final stays 5 min')
+        }
+        boardMode='final'
+      }
+    }
+    else if(msg.type==='NO_GAMES'){
+      // Server reports zero live games. Keep showing final if we just ended one (within 5 min window),
+      // otherwise flip to idle splash.
+      if(boardMode==='final' && Date.now() < finalUntil){
+        log('No games — keeping final visible')
+      } else {
+        boardMode='idle'
+        log('Idle splash')
+      }
     }
     else if(msg.type==='CONFIG_FULL'){
       // initial config snapshot on connect
