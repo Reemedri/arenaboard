@@ -122,7 +122,23 @@ function requireAdmin(req, res, next) {
 }
 
 const deviceConfigs = {}
-const deviceSockets = new Map()  // uid -> ws (for targeted admin messages)
+// uid -> Set<ws>. Multiple sockets can share a uid: typically one PWA controller and one board display.
+// Both must receive targeted messages, so the Set is iterated on send.
+const deviceSockets = new Map()
+function sendToDevice(uid, msg) {
+  const set = deviceSockets.get(uid)
+  if (!set || set.size === 0) return false
+  const data = typeof msg === 'string' ? msg : JSON.stringify(msg)
+  let delivered = 0
+  set.forEach(ws => { if (ws.readyState === WebSocket.OPEN) { ws.send(data); delivered++ } })
+  return delivered > 0
+}
+function deviceIsOnline(uid) {
+  const set = deviceSockets.get(uid)
+  if (!set) return false
+  for (const ws of set) if (ws.readyState === WebSocket.OPEN) return true
+  return false
+}
 let lastState = {}                // mock-mode global state (single fake game broadcast to all)
 let inNoGamesState = false        // global: last ESPN poll returned zero live games — drives idle splash on default-following clients
 // Sprint 2: live games picker
@@ -279,14 +295,9 @@ app.post('/api/device/:uid/trigger', (req, res) => {
   const dev   = deviceLastState.get(uid) || lastState || {}
   const tname = team === 'home' ? (dev.home_team || 'LAL') : (dev.away_team || 'LAL')
   const colors = getTeamColors(tname)
-  // Send only to this device's socket — manual triggers are personal, not stadium-wide.
-  const ws = deviceSockets.get(uid)
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ v: 1, type: 'SCORE_EVENT', team, colors, reason }))
-  } else {
-    // Fallback (board not connected) — broadcast so any open client sees it
-    broadcast({ v: 1, type: 'SCORE_EVENT', team, colors, reason })
-  }
+  // Send only to this device's sockets (board + PWA both subscribed under the uid) — manual triggers are personal, not stadium-wide.
+  const delivered = sendToDevice(uid, { v: 1, type: 'SCORE_EVENT', team, colors, reason })
+  if (!delivered) broadcast({ v: 1, type: 'SCORE_EVENT', team, colors, reason })
   logEvent(uid, 'trigger.manual', { reason, team })
   res.json({ ok: true, triggered: reason })
 })
@@ -322,12 +333,11 @@ app.post('/api/device/:uid/active-game', (req, res) => {
   deviceLastState.delete(uid)  // force a fresh FULL_STATE on next poll for the new game
   logEvent(uid, 'game.select', { game_id })
   // If we already have the game cached, push it to the device immediately so the board flips on the next render frame.
-  const ws = deviceSockets.get(uid)
   const game = lastESPNGames.find(g => g.id === game_id)
-  if (ws && ws.readyState === WebSocket.OPEN && game) {
+  if (game) {
     const fullState = { ...game, home_color: getTeamColors(game.home_team).secondary, away_color: getTeamColors(game.away_team).secondary }
     deviceLastState.set(uid, { ...game })
-    ws.send(JSON.stringify({ v: 1, type: 'FULL_STATE', data: fullState }))
+    sendToDevice(uid, { v: 1, type: 'FULL_STATE', data: fullState })
   }
   res.json({ ok: true, uid, game_id })
 })
@@ -433,7 +443,7 @@ app.get('/api/v1/admin/users/:id', requireAuth, requireAdmin, async (req, res) =
       `SELECT id, type, payload, occurred_at FROM events WHERE user_id = $1 OR device_id = ANY($2::uuid[]) ORDER BY occurred_at DESC LIMIT 50`,
       [req.params.id, deviceIds]
     )
-    res.json({ user: users[0], devices: devices.map(d => ({ ...d, online: deviceSockets.has(d.uid) })), events })
+    res.json({ user: users[0], devices: devices.map(d => ({ ...d, online: deviceIsOnline(d.uid) })), events })
   } catch (err) { console.error('admin/users/:id:', err.message); res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Failed' } }) }
 })
 
@@ -475,7 +485,7 @@ app.post('/api/v1/admin/users/:id/impersonate', requireAuth, requireAdmin, async
 app.get('/api/v1/admin/devices', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { rows } = await db.query('SELECT id, uid, user_id, name, firmware_ver, last_heartbeat, last_ip, activated_at, created_at FROM devices WHERE deleted_at IS NULL ORDER BY last_heartbeat DESC NULLS LAST LIMIT 200')
-    const devices = rows.map(d => ({ ...d, online: deviceSockets.has(d.uid) }))
+    const devices = rows.map(d => ({ ...d, online: deviceIsOnline(d.uid) }))
     res.json({ devices, connected: deviceSockets.size })
   } catch (err) { res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Failed' } }) }
 })
@@ -487,7 +497,7 @@ app.get('/api/v1/admin/devices/:id', requireAuth, requireAdmin, async (req, res)
     if (!device) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Device not found' } })
     const { rows: cfg } = await db.query('SELECT active_mode, settings, updated_at FROM device_configs WHERE device_id = $1', [device.id])
     const { rows: events } = await db.query('SELECT id, type, payload, occurred_at FROM events WHERE device_id = $1 ORDER BY occurred_at DESC LIMIT 50', [device.id])
-    res.json({ device: { ...device, online: deviceSockets.has(device.uid) }, config: cfg[0] || null, events })
+    res.json({ device: { ...device, online: deviceIsOnline(device.uid) }, config: cfg[0] || null, events })
   } catch (err) { console.error('admin/devices/:id:', err.message); res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Failed' } }) }
 })
 
@@ -496,13 +506,12 @@ app.post('/api/v1/admin/devices/:id/force-reload', requireAuth, requireAdmin, as
     const { rows } = await db.query('SELECT id, uid FROM devices WHERE id = $1 AND deleted_at IS NULL', [req.params.id])
     const device = rows[0]
     if (!device) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Device not found' } })
-    const ws = deviceSockets.get(device.uid)
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
+    if (!deviceIsOnline(device.uid)) {
       await logAdminAction(req.user.sub, 'device.force_reload.offline', device.id, null)
       return res.status(410).json({ error: { code: 'DEVICE_OFFLINE', message: 'Device not connected' } })
     }
     const saved = await getConfig(device.uid)
-    ws.send(JSON.stringify({ type: 'CONFIG_UPDATE', data: saved?.settings || {}, forced: true }))
+    sendToDevice(device.uid, { type: 'CONFIG_UPDATE', data: saved?.settings || {}, forced: true })
     await logAdminAction(req.user.sub, 'device.force_reload', device.id, null)
     res.json({ ok: true, uid: device.uid })
   } catch (err) { console.error('admin/force-reload:', err.message); res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Failed' } }) }
@@ -590,8 +599,9 @@ async function pollESPN() {
 
     // Per-device fanout: each connected device gets updates for the game IT is following.
     // If a device has no selection, it falls back to the first live game (same as old behaviour).
-    deviceSockets.forEach((ws, uid) => {
-      if (ws.readyState !== WebSocket.OPEN) return
+    // sendToDevice fans out to ALL sockets registered for that uid (PWA + board).
+    deviceSockets.forEach((sockets, uid) => {
+      if (!deviceIsOnline(uid)) return
 
       const followedId = deviceGameId.get(uid)
       let game = followedId ? lastESPNGames.find(g => g.id === followedId) : null
@@ -614,7 +624,7 @@ async function pollESPN() {
           const team   = diff.home_score !== undefined ? 'home' : 'away'
           const colors = getTeamColors(team === 'home' ? game.home_team : game.away_team)
           const reason = leadChanged ? 'LEAD_CHANGE' : isThree ? 'THREE' : 'CLUTCH'
-          ws.send(JSON.stringify({ v: 1, type: 'SCORE_EVENT', team, colors, reason }))
+          sendToDevice(uid, { v: 1, type: 'SCORE_EVENT', team, colors, reason })
           logEvent('global', 'score.event', { reason, uid, game_id: game.id })
         }
       }
@@ -626,17 +636,24 @@ async function pollESPN() {
       }
 
       deviceLastState.set(uid, { ...game })
-      ws.send(JSON.stringify({ v: 1, type: 'SCORE_UPDATE', data: diff }))
+      sendToDevice(uid, { v: 1, type: 'SCORE_UPDATE', data: diff })
     })
   } catch (err) { console.error('Poll error:', err.message) }
 }
 
 wss.on('connection', async (ws, req) => {
-  const uid = new URL(req.url, 'http://x').searchParams.get('uid') || 'unknown'
-  console.log(`Board connected: ${uid} — total: ${wss.clients.size}`)
-  deviceSockets.set(uid, ws)
+  const url = new URL(req.url, 'http://x')
+  const uid = url.searchParams.get('uid') || 'unknown'
+  const role = url.searchParams.get('role') || 'board'
+  console.log(`Client connected: uid=${uid} role=${role} — total clients: ${wss.clients.size}`)
+  // Add to per-uid Set so PWA + board can both subscribe under the same uid without overwriting each other.
+  let set = deviceSockets.get(uid)
+  if (!set) { set = new Set(); deviceSockets.set(uid, set) }
+  set.add(ws)
+  ws._uid = uid
+  ws._role = role
   await getOrCreateDevice(uid)
-  logEvent(uid, 'device.connect', { uid })
+  logEvent(uid, 'device.connect', { uid, role })
   // Send FULL_STATE for whatever this device is following.
   // Priority: explicit selection → first live game → mock-mode lastState → NO_GAMES idle.
   const followedIdConn = deviceGameId.get(uid)
@@ -657,10 +674,16 @@ wss.on('connection', async (ws, req) => {
   const saved = await getConfig(uid)
   if (saved) ws.send(JSON.stringify({ type: 'CONFIG_UPDATE', data: saved.settings }))
   ws.on('close', () => {
-    if (deviceSockets.get(uid) === ws) deviceSockets.delete(uid)
-    deviceLastState.delete(uid)  // Sprint 2: free per-device state on disconnect; selection persists in deviceGameId
-    logEvent(uid, 'device.disconnect', { uid })
-    console.log(`Board disconnected: ${uid} — total: ${wss.clients.size}`)
+    const set = deviceSockets.get(uid)
+    if (set) {
+      set.delete(ws)
+      if (set.size === 0) {
+        deviceSockets.delete(uid)
+        deviceLastState.delete(uid)  // free per-device state only when the LAST socket for this uid leaves; selection persists in deviceGameId
+      }
+    }
+    logEvent(uid, 'device.disconnect', { uid, role })
+    console.log(`Client disconnected: uid=${uid} role=${role} — total clients: ${wss.clients.size}`)
   })
 })
 
